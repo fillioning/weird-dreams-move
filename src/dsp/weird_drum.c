@@ -771,14 +771,107 @@ static float master_process(wd_master_t *m, float in) {
  * Instance
  * ============================================================================ */
 
+/* ── 30 Kit presets: each defines 8 voice preset indices ── */
+#define NUM_KITS 30
+static const int KIT_PRESETS[NUM_KITS][8] = {
+    /* 0  Default */     { 0, 5, 10, 25, 30, 15, 16, 20 },
+    /* 1  808 */         { 0, 5, 10, 25, 31, 15, 16, 20 },
+    /* 2  909 */         { 1, 6, 11, 26, 30, 15, 16, 20 },
+    /* 3  Minimal */     { 1, 5, 10, 29, 32, 15, 16, 24 },
+    /* 4  Industrial */  { 2, 8, 13, 28, 31, 18, 19, 21 },
+    /* 5  Lo-Fi */       { 3, 7, 10, 27, 33, 19, 17, 23 },
+    /* 6  Techno */      { 1, 6, 13, 25, 30, 15, 16, 20 },
+    /* 7  House */       { 0, 5, 14, 25, 33, 15, 16, 20 },
+    /* 8  Electro */     { 2, 9, 12, 26, 32, 18, 16, 21 },
+    /* 9  Hip Hop */     { 0, 7, 14, 27, 30, 15, 16, 23 },
+    /* 10 Trap */        { 0, 6, 11, 25, 30, 15, 16, 24 },
+    /* 11 DnB */         { 1, 8, 12, 29, 34, 15, 16, 20 },
+    /* 12 Dub */         { 4, 7, 10, 27, 31, 17, 16, 23 },
+    /* 13 Ambient */     { 4, 9, 14, 27, 33, 17, 16, 24 },
+    /* 14 Noise */       { 3, 9, 13, 28, 39, 19, 19, 36 },
+    /* 15 Glitch */      { 2, 8, 13, 28, 35, 18, 19, 36 },
+    /* 16 Perc Only */   { 30, 31, 32, 33, 34, 14, 11, 12 },
+    /* 17 FX Only */     { 35, 36, 37, 38, 39, 35, 38, 37 },
+    /* 18 All Kicks */   { 0, 1, 2, 3, 4, 0, 1, 2 },
+    /* 19 All Snares */  { 5, 6, 7, 8, 9, 5, 6, 7 },
+    /* 20 All Toms */    { 10, 11, 12, 13, 14, 10, 11, 12 },
+    /* 21 All HH */      { 15, 16, 17, 18, 19, 15, 16, 17 },
+    /* 22 All Cymbals */ { 20, 21, 22, 23, 24, 20, 21, 22 },
+    /* 23 All Claps */   { 25, 26, 27, 28, 29, 25, 26, 27 },
+    /* 24 Metal */       { 2, 8, 13, 28, 31, 18, 19, 22 },
+    /* 25 Organic */     { 4, 7, 14, 27, 33, 17, 16, 23 },
+    /* 26 Bright */      { 1, 6, 12, 26, 32, 15, 16, 21 },
+    /* 27 Dark */        { 0, 7, 10, 27, 31, 19, 17, 23 },
+    /* 28 Fast */        { 1, 6, 12, 26, 30, 15, 15, 38 },
+    /* 29 Weird */       { 2, 8, 13, 28, 35, 18, 19, 36 },
+};
+static const char *KIT_NAMES[NUM_KITS] = {
+    "Default", "808", "909", "Minimal", "Industrial",
+    "Lo-Fi", "Techno", "House", "Electro", "Hip Hop",
+    "Trap", "DnB", "Dub", "Ambient", "Noise",
+    "Glitch", "Perc Only", "FX Only", "All Kicks", "All Snares",
+    "All Toms", "All HH", "All Cymbal", "All Claps", "Metal",
+    "Organic", "Bright", "Dark", "Fast", "Weird"
+};
+
 typedef struct {
     wd_voice_t  voice[NUM_VOICES];
     wd_master_t master;
     float       voice_vol[NUM_VOICES];   /* mixer page volumes */
     float       voice_vol_smooth[NUM_VOICES];
-    int         current_page;            /* 0=mixer, 1=general, 2..9=voice1..8 */
+    int         current_page;            /* 0=mixer, 1=general, 2=patch, 3..10=voice1..8 */
     int         midi_voice_cursor;       /* round-robin for MIDI trigger */
+    int         current_kit;             /* 0..29 kit preset index */
+    float       same_freq;               /* 0=off, >0 = master freq override (20..20000) */
+    uint32_t    rng_state;               /* RNG for randomize */
 } wd_instance_t;
+
+/* Simple RNG for randomize */
+static float inst_random(wd_instance_t *inst) {
+    uint32_t x = inst->rng_state;
+    x ^= x << 13; x ^= x >> 17; x ^= x << 5;
+    inst->rng_state = x;
+    return (float)(x & 0xFFFF) / 65536.0f;
+}
+
+static void randomize_voice(wd_instance_t *inst, int vi) {
+    wd_voice_t *v = &inst->voice[vi];
+    v->freq = 20.0f * powf(1000.0f, inst_random(inst));
+    v->attack = 0.0001f + inst_random(inst) * 0.05f;
+    v->decay = 0.02f + inst_random(inst) * inst_random(inst) * 2.0f;
+    v->wave = inst_random(inst);
+    v->pitch_env_amt = inst_random(inst) * inst_random(inst);
+    v->pitch_env_rate = 0.005f + inst_random(inst) * 0.2f;
+    v->pitch_lfo_amt = inst_random(inst) < 0.3f ? inst_random(inst) * 0.2f : 0.0f;
+    v->pitch_lfo_rate = 0.5f + inst_random(inst) * 60.0f;
+    v->filter_type = (int)(inst_random(inst) * 3.0f) % 3;
+    v->filter_cutoff = 200.0f * powf(90.0f, inst_random(inst));
+    v->filter_res = 1.0f + inst_random(inst) * 3.0f;
+    v->noise_attack = 0.0001f + inst_random(inst) * 0.01f;
+    v->noise_decay = 0.01f + inst_random(inst) * inst_random(inst) * 0.5f;
+    v->mix = inst_random(inst);
+    v->distortion = inst_random(inst) * inst_random(inst) * 30.0f;
+    v->level = 0.5f + inst_random(inst) * 0.4f;
+    v->clap_count = inst_random(inst) < 0.2f ? (int)(inst_random(inst) * 4) : 0;
+    v->clap_spacing = 300 + (int)(inst_random(inst) * 400);
+    v->preset = NUM_PRESETS - 1; /* Custom */
+}
+
+static void randomize_patch(wd_instance_t *inst) {
+    for (int i = 0; i < NUM_VOICES; i++) {
+        randomize_voice(inst, i);
+        inst->voice_vol[i] = 0.5f + inst_random(inst) * 0.4f;
+    }
+}
+
+static void apply_kit(wd_instance_t *inst, int kit) {
+    if (kit < 0 || kit >= NUM_KITS) return;
+    inst->current_kit = kit;
+    for (int i = 0; i < NUM_VOICES; i++) {
+        voice_apply_preset(&inst->voice[i], KIT_PRESETS[kit][i]);
+        inst->voice_vol[i] = inst->voice[i].level;
+    }
+}
 
 /* ── MIDI note to voice mapping ──
  * Pads on Move send notes. We map pad positions to voices:
@@ -907,6 +1000,9 @@ static void *create_instance(const char *module_dir, const char *json_defaults) 
     master_init(&inst->master);
     inst->current_page = 0;
     inst->midi_voice_cursor = 0;
+    inst->current_kit = 0;
+    inst->same_freq = 0.0f;
+    inst->rng_state = 987654321u;
 
     return inst;
 }
@@ -936,6 +1032,9 @@ static void on_midi(void *instance, const uint8_t *msg, int len, int source) {
             inst->midi_voice_cursor = (inst->midi_voice_cursor + 1) % NUM_VOICES;
         }
         voice_trigger(&inst->voice[voice_idx], (float)vel / 127.0f);
+
+        /* Pad selects voice page for knob editing */
+        inst->current_page = 3 + voice_idx;
     }
 }
 
@@ -944,16 +1043,16 @@ static void set_param(void *instance, const char *key, const char *val) {
     wd_instance_t *inst = (wd_instance_t *)instance;
     if (!inst || !key || !val) return;
 
-    /* Page switching */
+    /* Page switching: 0=mixer, 1=general, 2=patch, 3..10=voice1..8 */
     if (strcmp(key, "_level") == 0) {
         if (strcmp(val, "Mixer") == 0) inst->current_page = 0;
         else if (strcmp(val, "General") == 0) inst->current_page = 1;
+        else if (strcmp(val, "Patch") == 0) inst->current_page = 2;
         else {
-            /* Voice pages: "Voice 1" .. "Voice 8" */
             for (int i = 0; i < NUM_VOICES; i++) {
                 char pg[16];
                 snprintf(pg, sizeof(pg), "Voice %d", i + 1);
-                if (strcmp(val, pg) == 0) { inst->current_page = 2 + i; break; }
+                if (strcmp(val, pg) == 0) { inst->current_page = 3 + i; break; }
             }
         }
         return;
@@ -982,9 +1081,32 @@ static void set_param(void *instance, const char *key, const char *val) {
                 case 6: inst->master.eq_high_gain = clampf(inst->master.eq_high_gain + delta * 0.24f, -12.0f, 12.0f); break;
                 case 7: inst->master.eq_high_freq = clampf(inst->master.eq_high_freq + delta * 160.0f, 2000.0f, 18000.0f); break;
             }
+        } else if (page == 2) {
+            /* Patch page: Kit, RndVoice, RndPatch, SameFreq + 4 unused */
+            switch (knob) {
+                case 0: { /* Kit (jog) */
+                    inst->current_kit = (inst->current_kit + (delta > 0 ? 1 : -1) + NUM_KITS) % NUM_KITS;
+                    apply_kit(inst, inst->current_kit);
+                } break;
+                case 1: /* Rnd Voice — randomize the last-played voice */
+                    if (delta != 0) {
+                        int vi = inst->current_page >= 3 ? inst->current_page - 3 : 0;
+                        randomize_voice(inst, vi);
+                    } break;
+                case 2: /* Rnd Patch — randomize entire kit */
+                    if (delta != 0) randomize_patch(inst);
+                    break;
+                case 3: { /* SameFreq — master frequency for all voices */
+                    float k = inst->same_freq > 0.0f ? freq_to_knob(inst->same_freq) : 0.5f;
+                    k = clampf(k + delta * 0.005f, 0.0f, 1.0f);
+                    inst->same_freq = knob_to_freq(k);
+                    for (int i = 0; i < NUM_VOICES; i++)
+                        inst->voice[i].freq = inst->same_freq;
+                } break;
+            }
         } else {
-            /* Voice page */
-            int vi = page - 2;
+            /* Voice pages (3..10) */
+            int vi = page - 3;
             if (vi < 0 || vi >= NUM_VOICES) return;
             wd_voice_t *v = &inst->voice[vi];
             switch (knob) {
@@ -1015,7 +1137,7 @@ static void set_param(void *instance, const char *key, const char *val) {
                 case 6: /* Distortion */
                     v->distortion = clampf(v->distortion + delta * 0.5f, 0.0f, 50.0f);
                     break;
-                case 7: { /* Preset (enum jog) */
+                case 7: { /* Preset (jog) */
                     v->preset = (v->preset + (delta > 0 ? 1 : -1) + NUM_PRESETS) % NUM_PRESETS;
                     if (v->preset < NUM_PRESETS - 1) voice_apply_preset(v, v->preset);
                 } break;
@@ -1046,6 +1168,10 @@ static void set_param(void *instance, const char *key, const char *val) {
     if (strcmp(key, "q_lo") == 0) { inst->master.eq_low_q = clampf(f, 0.3f, 8.0f); return; }
     if (strcmp(key, "q_mid") == 0) { inst->master.eq_mid_q = clampf(f, 0.3f, 8.0f); return; }
     if (strcmp(key, "q_hi") == 0) { inst->master.eq_high_q = clampf(f, 0.3f, 8.0f); return; }
+    if (strcmp(key, "kit") == 0) { apply_kit(inst, (int)clampf(f, 0, NUM_KITS-1)); return; }
+    if (strcmp(key, "rnd_voice") == 0) { if (f != 0) { int vi = inst->current_page >= 3 ? inst->current_page - 3 : 0; randomize_voice(inst, vi); } return; }
+    if (strcmp(key, "rnd_patch") == 0) { if (f != 0) randomize_patch(inst); return; }
+    if (strcmp(key, "same_freq") == 0) { inst->same_freq = clampf(f, 20.0f, 20000.0f); for (int i=0;i<NUM_VOICES;i++) inst->voice[i].freq = inst->same_freq; return; }
     if (strcmp(key, "master") == 0) { inst->master.master_level = clampf(f, 0.0f, 1.0f); return; }
 
     /* Per-voice params: v1_freq, v2_decay, etc. */
@@ -1191,6 +1317,10 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
 
         if (page == 0) return snprintf(buf, buf_len, "%s", MIXER_KNOB_NAMES[knob]);
         if (page == 1) return snprintf(buf, buf_len, "%s", GENERAL_KNOB_NAMES[knob]);
+        if (page == 2) {
+            static const char *PATCH_NAMES[8] = {"Kit","RndVoice","RndPatch","SameFreq","","","",""};
+            return snprintf(buf, buf_len, "%s", PATCH_NAMES[knob]);
+        }
         /* Voice pages */
         return snprintf(buf, buf_len, "%s", VOICE_KNOB_NAMES[knob]);
     }
@@ -1221,8 +1351,18 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
                 case 7: return snprintf(buf, buf_len, "%dHz", (int)inst->master.eq_high_freq);
             }
         }
+        if (page == 2) {
+            /* Patch page values */
+            switch (knob) {
+                case 0: return snprintf(buf, buf_len, "%s", KIT_NAMES[inst->current_kit]);
+                case 1: return snprintf(buf, buf_len, "Turn");
+                case 2: return snprintf(buf, buf_len, "Turn");
+                case 3: return snprintf(buf, buf_len, "%dHz", inst->same_freq > 0 ? (int)inst->same_freq : 0);
+                default: return snprintf(buf, buf_len, "-");
+            }
+        }
         /* Voice page */
-        int vi = page - 2;
+        int vi = page - 3;
         if (vi < 0 || vi >= NUM_VOICES) return -1;
         wd_voice_t *v = &inst->voice[vi];
         switch (knob) {
@@ -1269,6 +1409,8 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
             "{\"key\":\"q_lo\",\"name\":\"Lo Q\",\"type\":\"float\",\"min\":0.3,\"max\":8,\"step\":0.1},"
             "{\"key\":\"q_mid\",\"name\":\"Mid Q\",\"type\":\"float\",\"min\":0.3,\"max\":8,\"step\":0.1},"
             "{\"key\":\"q_hi\",\"name\":\"Hi Q\",\"type\":\"float\",\"min\":0.3,\"max\":8,\"step\":0.1},"
+            "{\"key\":\"kit\",\"name\":\"Kit\",\"type\":\"int\",\"min\":0,\"max\":29,\"step\":1},"
+            "{\"key\":\"same_freq\",\"name\":\"SameFreq\",\"type\":\"int\",\"min\":20,\"max\":20000,\"step\":1},"
             "{\"key\":\"master\",\"name\":\"Master\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
             "{\"key\":\"v1_freq\",\"name\":\"V1 Freq\",\"type\":\"int\",\"min\":20,\"max\":20000,\"step\":1},"
             "{\"key\":\"v1_decay\",\"name\":\"V1 Decay\",\"type\":\"float\",\"min\":0,\"max\":4,\"step\":0.01},"
@@ -1419,7 +1561,7 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
             "{\"modes\":null,\"levels\":{"
             "\"root\":{\"name\":\"Weird Drum\","
             "\"knobs\":[\"v1_vol\",\"v2_vol\",\"v3_vol\",\"v4_vol\",\"v5_vol\",\"v6_vol\",\"v7_vol\",\"v8_vol\"],"
-            "\"params\":[{\"level\":\"Mixer\",\"label\":\"Mixer\"},{\"level\":\"General\",\"label\":\"General\"},"
+            "\"params\":[{\"level\":\"Mixer\",\"label\":\"Mixer\"},{\"level\":\"General\",\"label\":\"General\"},{\"level\":\"Patch\",\"label\":\"Patch\"},"
             "{\"level\":\"Voice 1\",\"label\":\"Voice 1\"},{\"level\":\"Voice 2\",\"label\":\"Voice 2\"},"
             "{\"level\":\"Voice 3\",\"label\":\"Voice 3\"},{\"level\":\"Voice 4\",\"label\":\"Voice 4\"},"
             "{\"level\":\"Voice 5\",\"label\":\"Voice 5\"},{\"level\":\"Voice 6\",\"label\":\"Voice 6\"},"
@@ -1430,6 +1572,9 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
             "\"General\":{\"label\":\"General\","
             "\"knobs\":[\"comp\",\"dj_filter\",\"eq_lo\",\"lo_freq\",\"eq_mid\",\"mid_freq\",\"eq_hi\",\"hi_freq\"],"
             "\"params\":[\"comp\",\"dj_filter\",\"eq_lo\",\"lo_freq\",\"eq_mid\",\"mid_freq\",\"eq_hi\",\"hi_freq\",\"q_lo\",\"q_mid\",\"q_hi\",\"master\"]},"
+            "\"Patch\":{\"label\":\"Patch\","
+            "\"knobs\":[\"kit\",\"rnd_voice\",\"rnd_patch\",\"same_freq\"],"
+            "\"params\":[\"kit\",\"rnd_voice\",\"rnd_patch\",\"same_freq\"]},"
             "\"Voice 1\":{\"label\":\"Voice 1\","
             "\"knobs\":[\"v1_freq\",\"v1_decay\",\"v1_wave\",\"v1_penv\",\"v1_mix\",\"v1_cutoff\",\"v1_dist\",\"v1_preset\"],"
             "\"params\":[\"v1_freq\",\"v1_attack\",\"v1_decay\",\"v1_wave\",\"v1_penv\",\"v1_prate\",\"v1_lamt\",\"v1_lrate\",\"v1_ftype\",\"v1_cutoff\",\"v1_fres\",\"v1_nattack\",\"v1_ndecay\",\"v1_mix\",\"v1_dist\",\"v1_level\",\"v1_preset\"]},"
@@ -1509,6 +1654,10 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
     if (strcmp(key, "q_lo") == 0) return snprintf(buf, buf_len, "%.4f", inst->master.eq_low_q);
     if (strcmp(key, "q_mid") == 0) return snprintf(buf, buf_len, "%.4f", inst->master.eq_mid_q);
     if (strcmp(key, "q_hi") == 0) return snprintf(buf, buf_len, "%.4f", inst->master.eq_high_q);
+    if (strcmp(key, "kit") == 0) return snprintf(buf, buf_len, "%d", inst->current_kit);
+    if (strcmp(key, "rnd_voice") == 0) return snprintf(buf, buf_len, "0");
+    if (strcmp(key, "rnd_patch") == 0) return snprintf(buf, buf_len, "0");
+    if (strcmp(key, "same_freq") == 0) return snprintf(buf, buf_len, "%d", inst->same_freq > 0 ? (int)inst->same_freq : 0);
     if (strcmp(key, "master") == 0) return snprintf(buf, buf_len, "%.4f", inst->master.master_level);
 
     /* Per-voice params */

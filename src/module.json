@@ -34,6 +34,7 @@
                     "params": [
                         {"level": "Mixer", "label": "Mixer"},
                         {"level": "General", "label": "General"},
+                        {"level": "Patch", "label": "Patch"},
                         {"level": "Voice 1", "label": "Voice 1"},
                         {"level": "Voice 2", "label": "Voice 2"},
                         {"level": "Voice 3", "label": "Voice 3"},
@@ -53,6 +54,11 @@
                     "label": "General",
                     "knobs": ["comp", "dj_filter", "eq_lo", "lo_freq", "eq_mid", "mid_freq", "eq_hi", "hi_freq"],
                     "params": ["comp", "dj_filter", "eq_lo", "lo_freq", "eq_mid", "mid_freq", "eq_hi", "hi_freq", "q_lo", "q_mid", "q_hi", "master"]
+                },
+                "Patch": {
+                    "label": "Patch",
+                    "knobs": ["kit", "rnd_voice", "rnd_patch", "same_freq"],
+                    "params": ["kit", "rnd_voice", "rnd_patch", "same_freq"]
                 },
                 "Voice 1": {
                     "label": "Voice 1",
