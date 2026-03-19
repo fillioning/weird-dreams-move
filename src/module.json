@@ -8,6 +8,8 @@
     "author": "Vincent Fillion (DSP: Daniele Filaretti, MIT)",
     "license": "MIT",
     "dsp": "dsp.so",
+    "component_type": "sound_generator",
+    "raw_midi": true,
 
     "defaults": {
         "v1_vol": 0.9, "v2_vol": 0.8, "v3_vol": 0.8, "v4_vol": 0.7,
@@ -45,142 +47,52 @@
                 "Mixer": {
                     "label": "Mixer",
                     "knobs": ["v1_vol", "v2_vol", "v3_vol", "v4_vol", "v5_vol", "v6_vol", "v7_vol", "v8_vol"],
-                    "params": [
-                        {"key": "v1_vol", "label": "Kick", "type": "float", "min": 0.0, "max": 1.0, "step": 0.01},
-                        {"key": "v2_vol", "label": "Snare", "type": "float", "min": 0.0, "max": 1.0, "step": 0.01},
-                        {"key": "v3_vol", "label": "Tom", "type": "float", "min": 0.0, "max": 1.0, "step": 0.01},
-                        {"key": "v4_vol", "label": "Clap", "type": "float", "min": 0.0, "max": 1.0, "step": 0.01},
-                        {"key": "v5_vol", "label": "Rim", "type": "float", "min": 0.0, "max": 1.0, "step": 0.01},
-                        {"key": "v6_vol", "label": "HiHat", "type": "float", "min": 0.0, "max": 1.0, "step": 0.01},
-                        {"key": "v7_vol", "label": "Cymbal", "type": "float", "min": 0.0, "max": 1.0, "step": 0.01},
-                        {"key": "v8_vol", "label": "Tom2", "type": "float", "min": 0.0, "max": 1.0, "step": 0.01}
-                    ]
+                    "params": ["v1_vol", "v2_vol", "v3_vol", "v4_vol", "v5_vol", "v6_vol", "v7_vol", "v8_vol"]
                 },
                 "General": {
                     "label": "General",
                     "knobs": ["comp", "m_dist", "eq_lo", "eq_mid", "eq_hi", "lo_freq", "mid_freq", "master"],
-                    "params": [
-                        {"key": "comp", "label": "Compress", "type": "float", "min": 0.0, "max": 1.0, "step": 0.01},
-                        {"key": "m_dist", "label": "Distort", "type": "float", "min": 0.0, "max": 50.0, "step": 0.5},
-                        {"key": "eq_lo", "label": "EQ Low", "type": "float", "min": -12.0, "max": 12.0, "step": 0.24},
-                        {"key": "eq_mid", "label": "EQ Mid", "type": "float", "min": -12.0, "max": 12.0, "step": 0.24},
-                        {"key": "eq_hi", "label": "EQ High", "type": "float", "min": -12.0, "max": 12.0, "step": 0.24},
-                        {"key": "lo_freq", "label": "Lo Freq", "type": "float", "min": 20.0, "max": 500.0, "step": 4.8},
-                        {"key": "mid_freq", "label": "Mid Freq", "type": "float", "min": 200.0, "max": 8000.0, "step": 80.0},
-                        {"key": "master", "label": "Master", "type": "float", "min": 0.0, "max": 1.0, "step": 0.01}
-                    ]
+                    "params": ["comp", "m_dist", "eq_lo", "eq_mid", "eq_hi", "lo_freq", "mid_freq", "master"]
                 },
                 "Voice 1": {
                     "label": "Voice 1",
                     "knobs": ["v1_freq", "v1_decay", "v1_wave", "v1_penv", "v1_mix", "v1_cutoff", "v1_dist", "v1_preset"],
-                    "params": [
-                        {"key": "v1_freq", "label": "Freq", "type": "float", "min": 20.0, "max": 20000.0, "step": 1.0},
-                        {"key": "v1_decay", "label": "Decay", "type": "float", "min": 0.0001, "max": 2.0, "step": 0.01},
-                        {"key": "v1_wave", "label": "Wave", "type": "enum", "options": ["Sine", "Saw", "Square"]},
-                        {"key": "v1_penv", "label": "P.Env", "type": "float", "min": 0.0, "max": 1.0, "step": 0.01},
-                        {"key": "v1_mix", "label": "Mix", "type": "float", "min": 0.0, "max": 1.0, "step": 0.01},
-                        {"key": "v1_cutoff", "label": "Cutoff", "type": "float", "min": 20.0, "max": 18000.0, "step": 1.0},
-                        {"key": "v1_dist", "label": "Distort", "type": "float", "min": 0.0, "max": 50.0, "step": 0.5},
-                        {"key": "v1_preset", "label": "Preset", "type": "enum", "options": ["Kick", "Snare", "Tom", "Clap", "Rimshot", "HiHat", "Cymbal", "Custom"]}
-                    ]
+                    "params": ["v1_freq", "v1_decay", "v1_wave", "v1_penv", "v1_mix", "v1_cutoff", "v1_dist", "v1_preset"]
                 },
                 "Voice 2": {
                     "label": "Voice 2",
                     "knobs": ["v2_freq", "v2_decay", "v2_wave", "v2_penv", "v2_mix", "v2_cutoff", "v2_dist", "v2_preset"],
-                    "params": [
-                        {"key": "v2_freq", "label": "Freq", "type": "float", "min": 20.0, "max": 20000.0, "step": 1.0},
-                        {"key": "v2_decay", "label": "Decay", "type": "float", "min": 0.0001, "max": 2.0, "step": 0.01},
-                        {"key": "v2_wave", "label": "Wave", "type": "enum", "options": ["Sine", "Saw", "Square"]},
-                        {"key": "v2_penv", "label": "P.Env", "type": "float", "min": 0.0, "max": 1.0, "step": 0.01},
-                        {"key": "v2_mix", "label": "Mix", "type": "float", "min": 0.0, "max": 1.0, "step": 0.01},
-                        {"key": "v2_cutoff", "label": "Cutoff", "type": "float", "min": 20.0, "max": 18000.0, "step": 1.0},
-                        {"key": "v2_dist", "label": "Distort", "type": "float", "min": 0.0, "max": 50.0, "step": 0.5},
-                        {"key": "v2_preset", "label": "Preset", "type": "enum", "options": ["Kick", "Snare", "Tom", "Clap", "Rimshot", "HiHat", "Cymbal", "Custom"]}
-                    ]
+                    "params": ["v2_freq", "v2_decay", "v2_wave", "v2_penv", "v2_mix", "v2_cutoff", "v2_dist", "v2_preset"]
                 },
                 "Voice 3": {
                     "label": "Voice 3",
                     "knobs": ["v3_freq", "v3_decay", "v3_wave", "v3_penv", "v3_mix", "v3_cutoff", "v3_dist", "v3_preset"],
-                    "params": [
-                        {"key": "v3_freq", "label": "Freq", "type": "float", "min": 20.0, "max": 20000.0, "step": 1.0},
-                        {"key": "v3_decay", "label": "Decay", "type": "float", "min": 0.0001, "max": 2.0, "step": 0.01},
-                        {"key": "v3_wave", "label": "Wave", "type": "enum", "options": ["Sine", "Saw", "Square"]},
-                        {"key": "v3_penv", "label": "P.Env", "type": "float", "min": 0.0, "max": 1.0, "step": 0.01},
-                        {"key": "v3_mix", "label": "Mix", "type": "float", "min": 0.0, "max": 1.0, "step": 0.01},
-                        {"key": "v3_cutoff", "label": "Cutoff", "type": "float", "min": 20.0, "max": 18000.0, "step": 1.0},
-                        {"key": "v3_dist", "label": "Distort", "type": "float", "min": 0.0, "max": 50.0, "step": 0.5},
-                        {"key": "v3_preset", "label": "Preset", "type": "enum", "options": ["Kick", "Snare", "Tom", "Clap", "Rimshot", "HiHat", "Cymbal", "Custom"]}
-                    ]
+                    "params": ["v3_freq", "v3_decay", "v3_wave", "v3_penv", "v3_mix", "v3_cutoff", "v3_dist", "v3_preset"]
                 },
                 "Voice 4": {
                     "label": "Voice 4",
                     "knobs": ["v4_freq", "v4_decay", "v4_wave", "v4_penv", "v4_mix", "v4_cutoff", "v4_dist", "v4_preset"],
-                    "params": [
-                        {"key": "v4_freq", "label": "Freq", "type": "float", "min": 20.0, "max": 20000.0, "step": 1.0},
-                        {"key": "v4_decay", "label": "Decay", "type": "float", "min": 0.0001, "max": 2.0, "step": 0.01},
-                        {"key": "v4_wave", "label": "Wave", "type": "enum", "options": ["Sine", "Saw", "Square"]},
-                        {"key": "v4_penv", "label": "P.Env", "type": "float", "min": 0.0, "max": 1.0, "step": 0.01},
-                        {"key": "v4_mix", "label": "Mix", "type": "float", "min": 0.0, "max": 1.0, "step": 0.01},
-                        {"key": "v4_cutoff", "label": "Cutoff", "type": "float", "min": 20.0, "max": 18000.0, "step": 1.0},
-                        {"key": "v4_dist", "label": "Distort", "type": "float", "min": 0.0, "max": 50.0, "step": 0.5},
-                        {"key": "v4_preset", "label": "Preset", "type": "enum", "options": ["Kick", "Snare", "Tom", "Clap", "Rimshot", "HiHat", "Cymbal", "Custom"]}
-                    ]
+                    "params": ["v4_freq", "v4_decay", "v4_wave", "v4_penv", "v4_mix", "v4_cutoff", "v4_dist", "v4_preset"]
                 },
                 "Voice 5": {
                     "label": "Voice 5",
                     "knobs": ["v5_freq", "v5_decay", "v5_wave", "v5_penv", "v5_mix", "v5_cutoff", "v5_dist", "v5_preset"],
-                    "params": [
-                        {"key": "v5_freq", "label": "Freq", "type": "float", "min": 20.0, "max": 20000.0, "step": 1.0},
-                        {"key": "v5_decay", "label": "Decay", "type": "float", "min": 0.0001, "max": 2.0, "step": 0.01},
-                        {"key": "v5_wave", "label": "Wave", "type": "enum", "options": ["Sine", "Saw", "Square"]},
-                        {"key": "v5_penv", "label": "P.Env", "type": "float", "min": 0.0, "max": 1.0, "step": 0.01},
-                        {"key": "v5_mix", "label": "Mix", "type": "float", "min": 0.0, "max": 1.0, "step": 0.01},
-                        {"key": "v5_cutoff", "label": "Cutoff", "type": "float", "min": 20.0, "max": 18000.0, "step": 1.0},
-                        {"key": "v5_dist", "label": "Distort", "type": "float", "min": 0.0, "max": 50.0, "step": 0.5},
-                        {"key": "v5_preset", "label": "Preset", "type": "enum", "options": ["Kick", "Snare", "Tom", "Clap", "Rimshot", "HiHat", "Cymbal", "Custom"]}
-                    ]
+                    "params": ["v5_freq", "v5_decay", "v5_wave", "v5_penv", "v5_mix", "v5_cutoff", "v5_dist", "v5_preset"]
                 },
                 "Voice 6": {
                     "label": "Voice 6",
                     "knobs": ["v6_freq", "v6_decay", "v6_wave", "v6_penv", "v6_mix", "v6_cutoff", "v6_dist", "v6_preset"],
-                    "params": [
-                        {"key": "v6_freq", "label": "Freq", "type": "float", "min": 20.0, "max": 20000.0, "step": 1.0},
-                        {"key": "v6_decay", "label": "Decay", "type": "float", "min": 0.0001, "max": 2.0, "step": 0.01},
-                        {"key": "v6_wave", "label": "Wave", "type": "enum", "options": ["Sine", "Saw", "Square"]},
-                        {"key": "v6_penv", "label": "P.Env", "type": "float", "min": 0.0, "max": 1.0, "step": 0.01},
-                        {"key": "v6_mix", "label": "Mix", "type": "float", "min": 0.0, "max": 1.0, "step": 0.01},
-                        {"key": "v6_cutoff", "label": "Cutoff", "type": "float", "min": 20.0, "max": 18000.0, "step": 1.0},
-                        {"key": "v6_dist", "label": "Distort", "type": "float", "min": 0.0, "max": 50.0, "step": 0.5},
-                        {"key": "v6_preset", "label": "Preset", "type": "enum", "options": ["Kick", "Snare", "Tom", "Clap", "Rimshot", "HiHat", "Cymbal", "Custom"]}
-                    ]
+                    "params": ["v6_freq", "v6_decay", "v6_wave", "v6_penv", "v6_mix", "v6_cutoff", "v6_dist", "v6_preset"]
                 },
                 "Voice 7": {
                     "label": "Voice 7",
                     "knobs": ["v7_freq", "v7_decay", "v7_wave", "v7_penv", "v7_mix", "v7_cutoff", "v7_dist", "v7_preset"],
-                    "params": [
-                        {"key": "v7_freq", "label": "Freq", "type": "float", "min": 20.0, "max": 20000.0, "step": 1.0},
-                        {"key": "v7_decay", "label": "Decay", "type": "float", "min": 0.0001, "max": 2.0, "step": 0.01},
-                        {"key": "v7_wave", "label": "Wave", "type": "enum", "options": ["Sine", "Saw", "Square"]},
-                        {"key": "v7_penv", "label": "P.Env", "type": "float", "min": 0.0, "max": 1.0, "step": 0.01},
-                        {"key": "v7_mix", "label": "Mix", "type": "float", "min": 0.0, "max": 1.0, "step": 0.01},
-                        {"key": "v7_cutoff", "label": "Cutoff", "type": "float", "min": 20.0, "max": 18000.0, "step": 1.0},
-                        {"key": "v7_dist", "label": "Distort", "type": "float", "min": 0.0, "max": 50.0, "step": 0.5},
-                        {"key": "v7_preset", "label": "Preset", "type": "enum", "options": ["Kick", "Snare", "Tom", "Clap", "Rimshot", "HiHat", "Cymbal", "Custom"]}
-                    ]
+                    "params": ["v7_freq", "v7_decay", "v7_wave", "v7_penv", "v7_mix", "v7_cutoff", "v7_dist", "v7_preset"]
                 },
                 "Voice 8": {
                     "label": "Voice 8",
                     "knobs": ["v8_freq", "v8_decay", "v8_wave", "v8_penv", "v8_mix", "v8_cutoff", "v8_dist", "v8_preset"],
-                    "params": [
-                        {"key": "v8_freq", "label": "Freq", "type": "float", "min": 20.0, "max": 20000.0, "step": 1.0},
-                        {"key": "v8_decay", "label": "Decay", "type": "float", "min": 0.0001, "max": 2.0, "step": 0.01},
-                        {"key": "v8_wave", "label": "Wave", "type": "enum", "options": ["Sine", "Saw", "Square"]},
-                        {"key": "v8_penv", "label": "P.Env", "type": "float", "min": 0.0, "max": 1.0, "step": 0.01},
-                        {"key": "v8_mix", "label": "Mix", "type": "float", "min": 0.0, "max": 1.0, "step": 0.01},
-                        {"key": "v8_cutoff", "label": "Cutoff", "type": "float", "min": 20.0, "max": 18000.0, "step": 1.0},
-                        {"key": "v8_dist", "label": "Distort", "type": "float", "min": 0.0, "max": 50.0, "step": 0.5},
-                        {"key": "v8_preset", "label": "Preset", "type": "enum", "options": ["Kick", "Snare", "Tom", "Clap", "Rimshot", "HiHat", "Cymbal", "Custom"]}
-                    ]
+                    "params": ["v8_freq", "v8_decay", "v8_wave", "v8_penv", "v8_mix", "v8_cutoff", "v8_dist", "v8_preset"]
                 }
             }
         }

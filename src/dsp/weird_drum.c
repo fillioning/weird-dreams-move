@@ -770,7 +770,14 @@ static void set_param(void *instance, const char *key, const char *val) {
         snprintf(k, sizeof(k), "v%d_decay", i+1);
         if (strcmp(key, k) == 0) { v->decay = clampf(f, 0.0001f, 2.0f); return; }
         snprintf(k, sizeof(k), "v%d_wave", i+1);
-        if (strcmp(key, k) == 0) { v->wave = (int)clampf(f, 0, 2); return; }
+        if (strcmp(key, k) == 0) {
+            /* Accept string names or numeric */
+            if (strcmp(val, "Sine") == 0) v->wave = 0;
+            else if (strcmp(val, "Saw") == 0) v->wave = 1;
+            else if (strcmp(val, "Square") == 0) v->wave = 2;
+            else v->wave = (int)clampf(f, 0, 2);
+            return;
+        }
         snprintf(k, sizeof(k), "v%d_penv", i+1);
         if (strcmp(key, k) == 0) { v->pitch_env_amt = clampf(f, 0.0f, 1.0f); return; }
         snprintf(k, sizeof(k), "v%d_mix", i+1);
@@ -781,7 +788,12 @@ static void set_param(void *instance, const char *key, const char *val) {
         if (strcmp(key, k) == 0) { v->distortion = clampf(f, 0.0f, 50.0f); return; }
         snprintf(k, sizeof(k), "v%d_preset", i+1);
         if (strcmp(key, k) == 0) {
-            int p = (int)f;
+            /* Accept string names or numeric */
+            int p = -1;
+            for (int j = 0; j < 8; j++) {
+                if (strcmp(val, PRESET_NAMES[j]) == 0) { p = j; break; }
+            }
+            if (p < 0) p = (int)f;
             if (p >= 0 && p < 7) voice_apply_preset(v, p);
             else v->preset = 7;
             return;
@@ -920,23 +932,143 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
         }
     }
 
-    /* chain_params */
+    /* chain_params — memcpy pattern to avoid truncation */
     if (strcmp(key, "chain_params") == 0) {
-        int n = 0;
-        n += snprintf(buf + n, buf_len - n, "[");
-        for (int i = 0; i < NUM_VOICES; i++) {
-            if (i > 0) n += snprintf(buf + n, buf_len - n, ",");
-            n += snprintf(buf + n, buf_len - n,
-                "{\"key\":\"v%d_vol\",\"name\":\"V%d Vol\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01}",
-                i + 1, i + 1);
-        }
-        n += snprintf(buf + n, buf_len - n,
-            ",{\"key\":\"comp\",\"name\":\"Compress\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01}"
-            ",{\"key\":\"m_dist\",\"name\":\"Distort\",\"type\":\"float\",\"min\":0,\"max\":50,\"step\":0.5}"
-            ",{\"key\":\"master\",\"name\":\"Master\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01}"
-            "]");
-        if (n >= buf_len) n = buf_len - 1;
-        return n;
+        static const char *cp =
+            "["
+            "{\"key\":\"v1_vol\",\"name\":\"V1 Vol\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"v2_vol\",\"name\":\"V2 Vol\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"v3_vol\",\"name\":\"V3 Vol\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"v4_vol\",\"name\":\"V4 Vol\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"v5_vol\",\"name\":\"V5 Vol\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"v6_vol\",\"name\":\"V6 Vol\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"v7_vol\",\"name\":\"V7 Vol\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"v8_vol\",\"name\":\"V8 Vol\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"comp\",\"name\":\"Compress\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"m_dist\",\"name\":\"Distort\",\"type\":\"float\",\"min\":0,\"max\":50,\"step\":0.5},"
+            "{\"key\":\"eq_lo\",\"name\":\"EQ Low\",\"type\":\"float\",\"min\":-12,\"max\":12,\"step\":0.24},"
+            "{\"key\":\"eq_mid\",\"name\":\"EQ Mid\",\"type\":\"float\",\"min\":-12,\"max\":12,\"step\":0.24},"
+            "{\"key\":\"eq_hi\",\"name\":\"EQ High\",\"type\":\"float\",\"min\":-12,\"max\":12,\"step\":0.24},"
+            "{\"key\":\"lo_freq\",\"name\":\"Lo Freq\",\"type\":\"int\",\"min\":20,\"max\":500,\"step\":5},"
+            "{\"key\":\"mid_freq\",\"name\":\"Mid Freq\",\"type\":\"int\",\"min\":200,\"max\":8000,\"step\":80},"
+            "{\"key\":\"master\",\"name\":\"Master\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"v1_freq\",\"name\":\"V1 Freq\",\"type\":\"int\",\"min\":20,\"max\":20000,\"step\":1},"
+            "{\"key\":\"v1_decay\",\"name\":\"V1 Decay\",\"type\":\"float\",\"min\":0,\"max\":2,\"step\":0.01},"
+            "{\"key\":\"v1_wave\",\"name\":\"V1 Wave\",\"type\":\"enum\",\"options\":[\"Sine\",\"Saw\",\"Square\"]},"
+            "{\"key\":\"v1_penv\",\"name\":\"V1 P.Env\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"v1_mix\",\"name\":\"V1 Mix\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"v1_cutoff\",\"name\":\"V1 Cutoff\",\"type\":\"int\",\"min\":20,\"max\":18000,\"step\":1},"
+            "{\"key\":\"v1_dist\",\"name\":\"V1 Distort\",\"type\":\"float\",\"min\":0,\"max\":50,\"step\":0.5},"
+            "{\"key\":\"v1_preset\",\"name\":\"V1 Preset\",\"type\":\"enum\",\"options\":[\"Kick\",\"Snare\",\"Tom\",\"Clap\",\"Rimshot\",\"HiHat\",\"Cymbal\",\"Custom\"]},"
+            "{\"key\":\"v2_freq\",\"name\":\"V2 Freq\",\"type\":\"int\",\"min\":20,\"max\":20000,\"step\":1},"
+            "{\"key\":\"v2_decay\",\"name\":\"V2 Decay\",\"type\":\"float\",\"min\":0,\"max\":2,\"step\":0.01},"
+            "{\"key\":\"v2_wave\",\"name\":\"V2 Wave\",\"type\":\"enum\",\"options\":[\"Sine\",\"Saw\",\"Square\"]},"
+            "{\"key\":\"v2_penv\",\"name\":\"V2 P.Env\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"v2_mix\",\"name\":\"V2 Mix\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"v2_cutoff\",\"name\":\"V2 Cutoff\",\"type\":\"int\",\"min\":20,\"max\":18000,\"step\":1},"
+            "{\"key\":\"v2_dist\",\"name\":\"V2 Distort\",\"type\":\"float\",\"min\":0,\"max\":50,\"step\":0.5},"
+            "{\"key\":\"v2_preset\",\"name\":\"V2 Preset\",\"type\":\"enum\",\"options\":[\"Kick\",\"Snare\",\"Tom\",\"Clap\",\"Rimshot\",\"HiHat\",\"Cymbal\",\"Custom\"]},"
+            "{\"key\":\"v3_freq\",\"name\":\"V3 Freq\",\"type\":\"int\",\"min\":20,\"max\":20000,\"step\":1},"
+            "{\"key\":\"v3_decay\",\"name\":\"V3 Decay\",\"type\":\"float\",\"min\":0,\"max\":2,\"step\":0.01},"
+            "{\"key\":\"v3_wave\",\"name\":\"V3 Wave\",\"type\":\"enum\",\"options\":[\"Sine\",\"Saw\",\"Square\"]},"
+            "{\"key\":\"v3_penv\",\"name\":\"V3 P.Env\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"v3_mix\",\"name\":\"V3 Mix\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"v3_cutoff\",\"name\":\"V3 Cutoff\",\"type\":\"int\",\"min\":20,\"max\":18000,\"step\":1},"
+            "{\"key\":\"v3_dist\",\"name\":\"V3 Distort\",\"type\":\"float\",\"min\":0,\"max\":50,\"step\":0.5},"
+            "{\"key\":\"v3_preset\",\"name\":\"V3 Preset\",\"type\":\"enum\",\"options\":[\"Kick\",\"Snare\",\"Tom\",\"Clap\",\"Rimshot\",\"HiHat\",\"Cymbal\",\"Custom\"]},"
+            "{\"key\":\"v4_freq\",\"name\":\"V4 Freq\",\"type\":\"int\",\"min\":20,\"max\":20000,\"step\":1},"
+            "{\"key\":\"v4_decay\",\"name\":\"V4 Decay\",\"type\":\"float\",\"min\":0,\"max\":2,\"step\":0.01},"
+            "{\"key\":\"v4_wave\",\"name\":\"V4 Wave\",\"type\":\"enum\",\"options\":[\"Sine\",\"Saw\",\"Square\"]},"
+            "{\"key\":\"v4_penv\",\"name\":\"V4 P.Env\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"v4_mix\",\"name\":\"V4 Mix\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"v4_cutoff\",\"name\":\"V4 Cutoff\",\"type\":\"int\",\"min\":20,\"max\":18000,\"step\":1},"
+            "{\"key\":\"v4_dist\",\"name\":\"V4 Distort\",\"type\":\"float\",\"min\":0,\"max\":50,\"step\":0.5},"
+            "{\"key\":\"v4_preset\",\"name\":\"V4 Preset\",\"type\":\"enum\",\"options\":[\"Kick\",\"Snare\",\"Tom\",\"Clap\",\"Rimshot\",\"HiHat\",\"Cymbal\",\"Custom\"]},"
+            "{\"key\":\"v5_freq\",\"name\":\"V5 Freq\",\"type\":\"int\",\"min\":20,\"max\":20000,\"step\":1},"
+            "{\"key\":\"v5_decay\",\"name\":\"V5 Decay\",\"type\":\"float\",\"min\":0,\"max\":2,\"step\":0.01},"
+            "{\"key\":\"v5_wave\",\"name\":\"V5 Wave\",\"type\":\"enum\",\"options\":[\"Sine\",\"Saw\",\"Square\"]},"
+            "{\"key\":\"v5_penv\",\"name\":\"V5 P.Env\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"v5_mix\",\"name\":\"V5 Mix\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"v5_cutoff\",\"name\":\"V5 Cutoff\",\"type\":\"int\",\"min\":20,\"max\":18000,\"step\":1},"
+            "{\"key\":\"v5_dist\",\"name\":\"V5 Distort\",\"type\":\"float\",\"min\":0,\"max\":50,\"step\":0.5},"
+            "{\"key\":\"v5_preset\",\"name\":\"V5 Preset\",\"type\":\"enum\",\"options\":[\"Kick\",\"Snare\",\"Tom\",\"Clap\",\"Rimshot\",\"HiHat\",\"Cymbal\",\"Custom\"]},"
+            "{\"key\":\"v6_freq\",\"name\":\"V6 Freq\",\"type\":\"int\",\"min\":20,\"max\":20000,\"step\":1},"
+            "{\"key\":\"v6_decay\",\"name\":\"V6 Decay\",\"type\":\"float\",\"min\":0,\"max\":2,\"step\":0.01},"
+            "{\"key\":\"v6_wave\",\"name\":\"V6 Wave\",\"type\":\"enum\",\"options\":[\"Sine\",\"Saw\",\"Square\"]},"
+            "{\"key\":\"v6_penv\",\"name\":\"V6 P.Env\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"v6_mix\",\"name\":\"V6 Mix\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"v6_cutoff\",\"name\":\"V6 Cutoff\",\"type\":\"int\",\"min\":20,\"max\":18000,\"step\":1},"
+            "{\"key\":\"v6_dist\",\"name\":\"V6 Distort\",\"type\":\"float\",\"min\":0,\"max\":50,\"step\":0.5},"
+            "{\"key\":\"v6_preset\",\"name\":\"V6 Preset\",\"type\":\"enum\",\"options\":[\"Kick\",\"Snare\",\"Tom\",\"Clap\",\"Rimshot\",\"HiHat\",\"Cymbal\",\"Custom\"]},"
+            "{\"key\":\"v7_freq\",\"name\":\"V7 Freq\",\"type\":\"int\",\"min\":20,\"max\":20000,\"step\":1},"
+            "{\"key\":\"v7_decay\",\"name\":\"V7 Decay\",\"type\":\"float\",\"min\":0,\"max\":2,\"step\":0.01},"
+            "{\"key\":\"v7_wave\",\"name\":\"V7 Wave\",\"type\":\"enum\",\"options\":[\"Sine\",\"Saw\",\"Square\"]},"
+            "{\"key\":\"v7_penv\",\"name\":\"V7 P.Env\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"v7_mix\",\"name\":\"V7 Mix\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"v7_cutoff\",\"name\":\"V7 Cutoff\",\"type\":\"int\",\"min\":20,\"max\":18000,\"step\":1},"
+            "{\"key\":\"v7_dist\",\"name\":\"V7 Distort\",\"type\":\"float\",\"min\":0,\"max\":50,\"step\":0.5},"
+            "{\"key\":\"v7_preset\",\"name\":\"V7 Preset\",\"type\":\"enum\",\"options\":[\"Kick\",\"Snare\",\"Tom\",\"Clap\",\"Rimshot\",\"HiHat\",\"Cymbal\",\"Custom\"]},"
+            "{\"key\":\"v8_freq\",\"name\":\"V8 Freq\",\"type\":\"int\",\"min\":20,\"max\":20000,\"step\":1},"
+            "{\"key\":\"v8_decay\",\"name\":\"V8 Decay\",\"type\":\"float\",\"min\":0,\"max\":2,\"step\":0.01},"
+            "{\"key\":\"v8_wave\",\"name\":\"V8 Wave\",\"type\":\"enum\",\"options\":[\"Sine\",\"Saw\",\"Square\"]},"
+            "{\"key\":\"v8_penv\",\"name\":\"V8 P.Env\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"v8_mix\",\"name\":\"V8 Mix\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"v8_cutoff\",\"name\":\"V8 Cutoff\",\"type\":\"int\",\"min\":20,\"max\":18000,\"step\":1},"
+            "{\"key\":\"v8_dist\",\"name\":\"V8 Distort\",\"type\":\"float\",\"min\":0,\"max\":50,\"step\":0.5},"
+            "{\"key\":\"v8_preset\",\"name\":\"V8 Preset\",\"type\":\"enum\",\"options\":[\"Kick\",\"Snare\",\"Tom\",\"Clap\",\"Rimshot\",\"HiHat\",\"Cymbal\",\"Custom\"]}"
+            "]";
+        int len = (int)strlen(cp);
+        if (len >= buf_len) return -1;
+        memcpy(buf, cp, len + 1);
+        return len;
+    }
+
+    /* ui_hierarchy — MUST be in get_param for synths (module.json alone not enough) */
+    if (strcmp(key, "ui_hierarchy") == 0) {
+        static const char *hier =
+            "{\"modes\":null,\"levels\":{"
+            "\"root\":{\"name\":\"Weird Drum\","
+            "\"knobs\":[\"v1_vol\",\"v2_vol\",\"v3_vol\",\"v4_vol\",\"v5_vol\",\"v6_vol\",\"v7_vol\",\"v8_vol\"],"
+            "\"params\":[{\"level\":\"Mixer\",\"label\":\"Mixer\"},{\"level\":\"General\",\"label\":\"General\"},"
+            "{\"level\":\"Voice 1\",\"label\":\"Voice 1\"},{\"level\":\"Voice 2\",\"label\":\"Voice 2\"},"
+            "{\"level\":\"Voice 3\",\"label\":\"Voice 3\"},{\"level\":\"Voice 4\",\"label\":\"Voice 4\"},"
+            "{\"level\":\"Voice 5\",\"label\":\"Voice 5\"},{\"level\":\"Voice 6\",\"label\":\"Voice 6\"},"
+            "{\"level\":\"Voice 7\",\"label\":\"Voice 7\"},{\"level\":\"Voice 8\",\"label\":\"Voice 8\"}]},"
+            "\"Mixer\":{\"label\":\"Mixer\","
+            "\"knobs\":[\"v1_vol\",\"v2_vol\",\"v3_vol\",\"v4_vol\",\"v5_vol\",\"v6_vol\",\"v7_vol\",\"v8_vol\"],"
+            "\"params\":[\"v1_vol\",\"v2_vol\",\"v3_vol\",\"v4_vol\",\"v5_vol\",\"v6_vol\",\"v7_vol\",\"v8_vol\"]},"
+            "\"General\":{\"label\":\"General\","
+            "\"knobs\":[\"comp\",\"m_dist\",\"eq_lo\",\"eq_mid\",\"eq_hi\",\"lo_freq\",\"mid_freq\",\"master\"],"
+            "\"params\":[\"comp\",\"m_dist\",\"eq_lo\",\"eq_mid\",\"eq_hi\",\"lo_freq\",\"mid_freq\",\"master\"]},"
+            "\"Voice 1\":{\"label\":\"Voice 1\","
+            "\"knobs\":[\"v1_freq\",\"v1_decay\",\"v1_wave\",\"v1_penv\",\"v1_mix\",\"v1_cutoff\",\"v1_dist\",\"v1_preset\"],"
+            "\"params\":[\"v1_freq\",\"v1_decay\",\"v1_wave\",\"v1_penv\",\"v1_mix\",\"v1_cutoff\",\"v1_dist\",\"v1_preset\"]},"
+            "\"Voice 2\":{\"label\":\"Voice 2\","
+            "\"knobs\":[\"v2_freq\",\"v2_decay\",\"v2_wave\",\"v2_penv\",\"v2_mix\",\"v2_cutoff\",\"v2_dist\",\"v2_preset\"],"
+            "\"params\":[\"v2_freq\",\"v2_decay\",\"v2_wave\",\"v2_penv\",\"v2_mix\",\"v2_cutoff\",\"v2_dist\",\"v2_preset\"]},"
+            "\"Voice 3\":{\"label\":\"Voice 3\","
+            "\"knobs\":[\"v3_freq\",\"v3_decay\",\"v3_wave\",\"v3_penv\",\"v3_mix\",\"v3_cutoff\",\"v3_dist\",\"v3_preset\"],"
+            "\"params\":[\"v3_freq\",\"v3_decay\",\"v3_wave\",\"v3_penv\",\"v3_mix\",\"v3_cutoff\",\"v3_dist\",\"v3_preset\"]},"
+            "\"Voice 4\":{\"label\":\"Voice 4\","
+            "\"knobs\":[\"v4_freq\",\"v4_decay\",\"v4_wave\",\"v4_penv\",\"v4_mix\",\"v4_cutoff\",\"v4_dist\",\"v4_preset\"],"
+            "\"params\":[\"v4_freq\",\"v4_decay\",\"v4_wave\",\"v4_penv\",\"v4_mix\",\"v4_cutoff\",\"v4_dist\",\"v4_preset\"]},"
+            "\"Voice 5\":{\"label\":\"Voice 5\","
+            "\"knobs\":[\"v5_freq\",\"v5_decay\",\"v5_wave\",\"v5_penv\",\"v5_mix\",\"v5_cutoff\",\"v5_dist\",\"v5_preset\"],"
+            "\"params\":[\"v5_freq\",\"v5_decay\",\"v5_wave\",\"v5_penv\",\"v5_mix\",\"v5_cutoff\",\"v5_dist\",\"v5_preset\"]},"
+            "\"Voice 6\":{\"label\":\"Voice 6\","
+            "\"knobs\":[\"v6_freq\",\"v6_decay\",\"v6_wave\",\"v6_penv\",\"v6_mix\",\"v6_cutoff\",\"v6_dist\",\"v6_preset\"],"
+            "\"params\":[\"v6_freq\",\"v6_decay\",\"v6_wave\",\"v6_penv\",\"v6_mix\",\"v6_cutoff\",\"v6_dist\",\"v6_preset\"]},"
+            "\"Voice 7\":{\"label\":\"Voice 7\","
+            "\"knobs\":[\"v7_freq\",\"v7_decay\",\"v7_wave\",\"v7_penv\",\"v7_mix\",\"v7_cutoff\",\"v7_dist\",\"v7_preset\"],"
+            "\"params\":[\"v7_freq\",\"v7_decay\",\"v7_wave\",\"v7_penv\",\"v7_mix\",\"v7_cutoff\",\"v7_dist\",\"v7_preset\"]},"
+            "\"Voice 8\":{\"label\":\"Voice 8\","
+            "\"knobs\":[\"v8_freq\",\"v8_decay\",\"v8_wave\",\"v8_penv\",\"v8_mix\",\"v8_cutoff\",\"v8_dist\",\"v8_preset\"],"
+            "\"params\":[\"v8_freq\",\"v8_decay\",\"v8_wave\",\"v8_penv\",\"v8_mix\",\"v8_cutoff\",\"v8_dist\",\"v8_preset\"]}"
+            "}}";
+        int len = (int)strlen(hier);
+        if (len >= buf_len) return -1;
+        memcpy(buf, hier, len + 1);
+        return len;
     }
 
     /* State serialization */
@@ -965,15 +1097,47 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
         return n;
     }
 
-    /* Direct parameter read */
+    /* Direct parameter reads — all params must be readable for menu editing */
+
+    /* Mixer volumes */
     for (int i = 0; i < NUM_VOICES; i++) {
         char k[24];
         snprintf(k, sizeof(k), "v%d_vol", i+1);
-        if (strcmp(key, k) == 0) return snprintf(buf, buf_len, "%.3f", inst->voice_vol[i]);
+        if (strcmp(key, k) == 0) return snprintf(buf, buf_len, "%.4f", inst->voice_vol[i]);
     }
-    if (strcmp(key, "comp") == 0) return snprintf(buf, buf_len, "%.3f", inst->master.comp_amount);
-    if (strcmp(key, "m_dist") == 0) return snprintf(buf, buf_len, "%.1f", inst->master.dist_amount);
-    if (strcmp(key, "master") == 0) return snprintf(buf, buf_len, "%.3f", inst->master.master_level);
+
+    /* Master params */
+    if (strcmp(key, "comp") == 0) return snprintf(buf, buf_len, "%.4f", inst->master.comp_amount);
+    if (strcmp(key, "m_dist") == 0) return snprintf(buf, buf_len, "%.4f", inst->master.dist_amount);
+    if (strcmp(key, "eq_lo") == 0) return snprintf(buf, buf_len, "%.4f", inst->master.eq_low_gain);
+    if (strcmp(key, "eq_mid") == 0) return snprintf(buf, buf_len, "%.4f", inst->master.eq_mid_gain);
+    if (strcmp(key, "eq_hi") == 0) return snprintf(buf, buf_len, "%.4f", inst->master.eq_high_gain);
+    if (strcmp(key, "lo_freq") == 0) return snprintf(buf, buf_len, "%d", (int)inst->master.eq_low_freq);
+    if (strcmp(key, "mid_freq") == 0) return snprintf(buf, buf_len, "%d", (int)inst->master.eq_mid_freq);
+    if (strcmp(key, "master") == 0) return snprintf(buf, buf_len, "%.4f", inst->master.master_level);
+
+    /* Per-voice params */
+    for (int i = 0; i < NUM_VOICES; i++) {
+        char k[24];
+        wd_voice_t *v = &inst->voice[i];
+
+        snprintf(k, sizeof(k), "v%d_freq", i+1);
+        if (strcmp(key, k) == 0) return snprintf(buf, buf_len, "%d", (int)v->freq);
+        snprintf(k, sizeof(k), "v%d_decay", i+1);
+        if (strcmp(key, k) == 0) return snprintf(buf, buf_len, "%.4f", v->decay);
+        snprintf(k, sizeof(k), "v%d_wave", i+1);
+        if (strcmp(key, k) == 0) return snprintf(buf, buf_len, "%s", WAVE_NAMES[v->wave]);
+        snprintf(k, sizeof(k), "v%d_penv", i+1);
+        if (strcmp(key, k) == 0) return snprintf(buf, buf_len, "%.4f", v->pitch_env_amt);
+        snprintf(k, sizeof(k), "v%d_mix", i+1);
+        if (strcmp(key, k) == 0) return snprintf(buf, buf_len, "%.4f", v->mix);
+        snprintf(k, sizeof(k), "v%d_cutoff", i+1);
+        if (strcmp(key, k) == 0) return snprintf(buf, buf_len, "%d", (int)v->filter_cutoff);
+        snprintf(k, sizeof(k), "v%d_dist", i+1);
+        if (strcmp(key, k) == 0) return snprintf(buf, buf_len, "%.4f", v->distortion);
+        snprintf(k, sizeof(k), "v%d_preset", i+1);
+        if (strcmp(key, k) == 0) return snprintf(buf, buf_len, "%s", PRESET_NAMES[v->preset]);
+    }
 
     return -1;
 }
@@ -1010,7 +1174,7 @@ static void render_block(void *instance, int16_t *out_lr, int frames) {
 }
 
 /* ============================================================================
- * Plugin API Export
+ * Plugin API Export — 8 fields (get_error between get_param and render_block)
  * ============================================================================ */
 
 typedef struct {
@@ -1020,6 +1184,7 @@ typedef struct {
     void  (*on_midi)(void *, const uint8_t *, int, int);
     void  (*set_param)(void *, const char *, const char *);
     int   (*get_param)(void *, const char *, char *, int);
+    int   (*get_error)(void *, char *, int);     /* MUST exist — NULL is fine */
     void  (*render_block)(void *, int16_t *, int);
 } plugin_api_v2_t;
 
@@ -1033,6 +1198,7 @@ plugin_api_v2_t* move_plugin_init_v2(const void *host) {
         .on_midi          = on_midi,
         .set_param        = set_param,
         .get_param        = get_param,
+        .get_error        = NULL,
         .render_block     = render_block,
     };
     return &api;
