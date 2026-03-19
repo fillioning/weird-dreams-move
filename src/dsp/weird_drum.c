@@ -228,6 +228,7 @@ typedef struct {
     float mix;              /* 0..1 (0=osc, 1=noise) */
     float distortion;       /* 0..50 dB */
     float level;            /* 0..1 linear */
+    float pan;              /* -1..+1 (left..right, 0=center) */
 
     int   preset;
     int   active;           /* voice is sounding */
@@ -819,7 +820,8 @@ typedef struct {
     wd_master_t master;
     float       voice_vol[NUM_VOICES];   /* mixer page volumes */
     float       voice_vol_smooth[NUM_VOICES];
-    int         current_page;            /* 0=mixer, 1=general, 2=patch, 3..10=voice1..8 */
+    float       voice_pan_smooth[NUM_VOICES]; /* smoothed pan */
+    int         current_page;            /* 0=mixer, 1=general, 2=patch, 3=pan, 4..11=voice1..8 */
     int         midi_voice_cursor;       /* round-robin for MIDI trigger */
     int         current_kit;             /* 0..29 kit preset index */
     float       same_freq;               /* 0=off, >0 = master freq override (20..20000) */
@@ -1034,7 +1036,7 @@ static void on_midi(void *instance, const uint8_t *msg, int len, int source) {
         voice_trigger(&inst->voice[voice_idx], (float)vel / 127.0f);
 
         /* Pad selects voice page for knob editing */
-        inst->current_page = 3 + voice_idx;
+        inst->current_page = 4 + voice_idx;
     }
 }
 
@@ -1043,16 +1045,17 @@ static void set_param(void *instance, const char *key, const char *val) {
     wd_instance_t *inst = (wd_instance_t *)instance;
     if (!inst || !key || !val) return;
 
-    /* Page switching: 0=mixer, 1=general, 2=patch, 3..10=voice1..8 */
+    /* Page switching: 0=mixer, 1=general, 2=patch, 3=pan, 4..11=voice1..8 */
     if (strcmp(key, "_level") == 0) {
         if (strcmp(val, "Mixer") == 0) inst->current_page = 0;
         else if (strcmp(val, "General") == 0) inst->current_page = 1;
         else if (strcmp(val, "Patch") == 0) inst->current_page = 2;
+        else if (strcmp(val, "Pan") == 0) inst->current_page = 3;
         else {
             for (int i = 0; i < NUM_VOICES; i++) {
                 char pg[16];
                 snprintf(pg, sizeof(pg), "Voice %d", i + 1);
-                if (strcmp(val, pg) == 0) { inst->current_page = 3 + i; break; }
+                if (strcmp(val, pg) == 0) { inst->current_page = 4 + i; break; }
             }
         }
         return;
@@ -1082,7 +1085,7 @@ static void set_param(void *instance, const char *key, const char *val) {
                 case 7: inst->master.eq_high_freq = clampf(inst->master.eq_high_freq + delta * 160.0f, 2000.0f, 18000.0f); break;
             }
         } else if (page == 2) {
-            /* Patch page: Kit, RndVoice, RndPatch, SameFreq + 4 unused */
+            /* Patch page: Kit, Rnd Voice, Rnd Patch, SameFreq, RndPan + 3 unused */
             switch (knob) {
                 case 0: { /* Kit (jog) */
                     inst->current_kit = (inst->current_kit + (delta > 0 ? 1 : -1) + NUM_KITS) % NUM_KITS;
@@ -1090,23 +1093,38 @@ static void set_param(void *instance, const char *key, const char *val) {
                 } break;
                 case 1: /* Rnd Voice — randomize the last-played voice */
                     if (delta != 0) {
-                        int vi = inst->current_page >= 3 ? inst->current_page - 3 : 0;
+                        int vi = inst->current_page >= 4 ? inst->current_page - 4 : 0;
                         randomize_voice(inst, vi);
                     } break;
                 case 2: /* Rnd Patch — randomize entire kit */
                     if (delta != 0) randomize_patch(inst);
                     break;
-                case 3: { /* SameFreq — master frequency for all voices */
+                case 3: { /* SameFreq — master frequency + filter cutoff for all voices */
                     float k = inst->same_freq > 0.0f ? freq_to_knob(inst->same_freq) : 0.5f;
                     k = clampf(k + delta * 0.005f, 0.0f, 1.0f);
                     inst->same_freq = knob_to_freq(k);
-                    for (int i = 0; i < NUM_VOICES; i++)
+                    for (int i = 0; i < NUM_VOICES; i++) {
                         inst->voice[i].freq = inst->same_freq;
+                        inst->voice[i].filter_cutoff = clampf(inst->same_freq, 20.0f, 18000.0f);
+                    }
                 } break;
+                case 4: /* Rnd Pan — randomize panning (kicks stay center) */
+                    if (delta != 0) {
+                        for (int i = 0; i < NUM_VOICES; i++) {
+                            if (inst->voice[i].preset <= 4) /* Kicks (0-4) stay center */
+                                inst->voice[i].pan = 0.0f;
+                            else
+                                inst->voice[i].pan = (inst_random(inst) * 2.0f - 1.0f) * 0.8f;
+                        }
+                    } break;
             }
+        } else if (page == 3) {
+            /* Pan page: 8 pan knobs */
+            if (knob >= 0 && knob < NUM_VOICES)
+                inst->voice[knob].pan = clampf(inst->voice[knob].pan + delta * 0.02f, -1.0f, 1.0f);
         } else {
-            /* Voice pages (3..10) */
-            int vi = page - 3;
+            /* Voice pages (4..11) */
+            int vi = page - 4;
             if (vi < 0 || vi >= NUM_VOICES) return;
             wd_voice_t *v = &inst->voice[vi];
             switch (knob) {
@@ -1171,7 +1189,11 @@ static void set_param(void *instance, const char *key, const char *val) {
     if (strcmp(key, "kit") == 0) { apply_kit(inst, (int)clampf(f, 0, NUM_KITS-1)); return; }
     if (strcmp(key, "rnd_voice") == 0) { if (f != 0) { int vi = inst->current_page >= 3 ? inst->current_page - 3 : 0; randomize_voice(inst, vi); } return; }
     if (strcmp(key, "rnd_patch") == 0) { if (f != 0) randomize_patch(inst); return; }
-    if (strcmp(key, "same_freq") == 0) { inst->same_freq = clampf(f, 20.0f, 20000.0f); for (int i=0;i<NUM_VOICES;i++) inst->voice[i].freq = inst->same_freq; return; }
+    if (strcmp(key, "rnd_pan") == 0) {
+        if (f != 0) { for (int i=0;i<NUM_VOICES;i++) { if (inst->voice[i].preset<=4) inst->voice[i].pan=0; else inst->voice[i].pan=(inst_random(inst)*2.0f-1.0f)*0.8f; } }
+        return;
+    }
+    if (strcmp(key, "same_freq") == 0) { inst->same_freq = clampf(f, 20.0f, 20000.0f); for (int i=0;i<NUM_VOICES;i++) { inst->voice[i].freq = inst->same_freq; inst->voice[i].filter_cutoff = clampf(inst->same_freq, 20.0f, 18000.0f); } return; }
     if (strcmp(key, "master") == 0) { inst->master.master_level = clampf(f, 0.0f, 1.0f); return; }
 
     /* Per-voice params: v1_freq, v2_decay, etc. */
@@ -1237,6 +1259,8 @@ static void set_param(void *instance, const char *key, const char *val) {
         if (strcmp(key, k) == 0) { v->noise_attack = clampf(f, 0.0001f, 1.0f); return; }
         snprintf(k, sizeof(k), "v%d_level", i+1);
         if (strcmp(key, k) == 0) { v->level = clampf(f, 0.0f, 1.0f); return; }
+        snprintf(k, sizeof(k), "v%d_pan", i+1);
+        if (strcmp(key, k) == 0) { v->pan = clampf(f, -1.0f, 1.0f); return; }
     }
 
     /* State restore (all params in one string) */
@@ -1294,6 +1318,7 @@ static void set_param(void *instance, const char *key, const char *val) {
             NEXT_TOKEN(); v->mix = atof(token);
             NEXT_TOKEN(); v->distortion = atof(token);
             NEXT_TOKEN(); v->level = atof(token);
+            NEXT_TOKEN(); v->pan = atof(token);
         }
         #undef NEXT_TOKEN
         return;
@@ -1318,9 +1343,10 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
         if (page == 0) return snprintf(buf, buf_len, "%s", MIXER_KNOB_NAMES[knob]);
         if (page == 1) return snprintf(buf, buf_len, "%s", GENERAL_KNOB_NAMES[knob]);
         if (page == 2) {
-            static const char *PATCH_NAMES[8] = {"Kit","RndVoice","RndPatch","SameFreq","","","",""};
-            return snprintf(buf, buf_len, "%s", PATCH_NAMES[knob]);
+            static const char *PATCH_N[8] = {"Kit","Rnd Voice","Rnd Patch","SameFreq","Rnd Pan","","",""};
+            return snprintf(buf, buf_len, "%s", PATCH_N[knob]);
         }
+        if (page == 3) return snprintf(buf, buf_len, "%s", MIXER_KNOB_NAMES[knob]);
         /* Voice pages */
         return snprintf(buf, buf_len, "%s", VOICE_KNOB_NAMES[knob]);
     }
@@ -1352,17 +1378,26 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
             }
         }
         if (page == 2) {
-            /* Patch page values */
             switch (knob) {
                 case 0: return snprintf(buf, buf_len, "%s", KIT_NAMES[inst->current_kit]);
                 case 1: return snprintf(buf, buf_len, "Turn");
                 case 2: return snprintf(buf, buf_len, "Turn");
                 case 3: return snprintf(buf, buf_len, "%dHz", inst->same_freq > 0 ? (int)inst->same_freq : 0);
+                case 4: return snprintf(buf, buf_len, "Turn");
                 default: return snprintf(buf, buf_len, "-");
             }
         }
+        if (page == 3) {
+            /* Pan page */
+            if (knob < NUM_VOICES) {
+                float p = inst->voice[knob].pan;
+                if (p < -0.01f) return snprintf(buf, buf_len, "L%d", (int)(-p * 100));
+                if (p > 0.01f) return snprintf(buf, buf_len, "R%d", (int)(p * 100));
+                return snprintf(buf, buf_len, "C");
+            }
+        }
         /* Voice page */
-        int vi = page - 3;
+        int vi = page - 4;
         if (vi < 0 || vi >= NUM_VOICES) return -1;
         wd_voice_t *v = &inst->voice[vi];
         switch (knob) {
@@ -1561,7 +1596,7 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
             "{\"modes\":null,\"levels\":{"
             "\"root\":{\"name\":\"Weird Drum\","
             "\"knobs\":[\"v1_vol\",\"v2_vol\",\"v3_vol\",\"v4_vol\",\"v5_vol\",\"v6_vol\",\"v7_vol\",\"v8_vol\"],"
-            "\"params\":[{\"level\":\"Mixer\",\"label\":\"Mixer\"},{\"level\":\"General\",\"label\":\"General\"},{\"level\":\"Patch\",\"label\":\"Patch\"},"
+            "\"params\":[{\"level\":\"Mixer\",\"label\":\"Mixer\"},{\"level\":\"General\",\"label\":\"General\"},{\"level\":\"Patch\",\"label\":\"Patch\"},{\"level\":\"Pan\",\"label\":\"Pan\"},"
             "{\"level\":\"Voice 1\",\"label\":\"Voice 1\"},{\"level\":\"Voice 2\",\"label\":\"Voice 2\"},"
             "{\"level\":\"Voice 3\",\"label\":\"Voice 3\"},{\"level\":\"Voice 4\",\"label\":\"Voice 4\"},"
             "{\"level\":\"Voice 5\",\"label\":\"Voice 5\"},{\"level\":\"Voice 6\",\"label\":\"Voice 6\"},"
@@ -1573,8 +1608,11 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
             "\"knobs\":[\"comp\",\"dj_filter\",\"eq_lo\",\"lo_freq\",\"eq_mid\",\"mid_freq\",\"eq_hi\",\"hi_freq\"],"
             "\"params\":[\"comp\",\"dj_filter\",\"eq_lo\",\"lo_freq\",\"eq_mid\",\"mid_freq\",\"eq_hi\",\"hi_freq\",\"q_lo\",\"q_mid\",\"q_hi\",\"master\"]},"
             "\"Patch\":{\"label\":\"Patch\","
-            "\"knobs\":[\"kit\",\"rnd_voice\",\"rnd_patch\",\"same_freq\"],"
-            "\"params\":[\"kit\",\"rnd_voice\",\"rnd_patch\",\"same_freq\"]},"
+            "\"knobs\":[\"kit\",\"rnd_voice\",\"rnd_patch\",\"same_freq\",\"rnd_pan\"],"
+            "\"params\":[\"kit\",\"rnd_voice\",\"rnd_patch\",\"same_freq\",\"rnd_pan\"]},"
+            "\"Pan\":{\"label\":\"Pan\","
+            "\"knobs\":[\"v1_pan\",\"v2_pan\",\"v3_pan\",\"v4_pan\",\"v5_pan\",\"v6_pan\",\"v7_pan\",\"v8_pan\"],"
+            "\"params\":[\"v1_pan\",\"v2_pan\",\"v3_pan\",\"v4_pan\",\"v5_pan\",\"v6_pan\",\"v7_pan\",\"v8_pan\"]},"
             "\"Voice 1\":{\"label\":\"Voice 1\","
             "\"knobs\":[\"v1_freq\",\"v1_decay\",\"v1_wave\",\"v1_penv\",\"v1_mix\",\"v1_cutoff\",\"v1_dist\",\"v1_preset\"],"
             "\"params\":[\"v1_freq\",\"v1_attack\",\"v1_decay\",\"v1_wave\",\"v1_penv\",\"v1_prate\",\"v1_lamt\",\"v1_lrate\",\"v1_ftype\",\"v1_cutoff\",\"v1_fres\",\"v1_nattack\",\"v1_ndecay\",\"v1_mix\",\"v1_dist\",\"v1_level\",\"v1_preset\"]},"
@@ -1623,11 +1661,11 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
         for (int i = 0; i < NUM_VOICES; i++) {
             wd_voice_t *v = &inst->voice[i];
             n += snprintf(buf + n, buf_len - n,
-                "%d %.1f %.4f %.4f %.4f %.3f %.4f %.3f %.1f %d %.0f %.2f %.4f %.4f %.3f %.1f %.3f ",
+                "%d %.1f %.4f %.4f %.4f %.3f %.4f %.3f %.1f %d %.0f %.2f %.4f %.4f %.3f %.1f %.3f %.2f ",
                 v->preset, v->freq, v->attack, v->decay, v->wave,
                 v->pitch_env_amt, v->pitch_env_rate, v->pitch_lfo_amt, v->pitch_lfo_rate,
                 v->filter_type, v->filter_cutoff, v->filter_res,
-                v->noise_attack, v->noise_decay, v->mix, v->distortion, v->level);
+                v->noise_attack, v->noise_decay, v->mix, v->distortion, v->level, v->pan);
         }
         if (n >= buf_len) n = buf_len - 1;
         return n;
@@ -1657,6 +1695,7 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
     if (strcmp(key, "kit") == 0) return snprintf(buf, buf_len, "%d", inst->current_kit);
     if (strcmp(key, "rnd_voice") == 0) return snprintf(buf, buf_len, "0");
     if (strcmp(key, "rnd_patch") == 0) return snprintf(buf, buf_len, "0");
+    if (strcmp(key, "rnd_pan") == 0) return snprintf(buf, buf_len, "0");
     if (strcmp(key, "same_freq") == 0) return snprintf(buf, buf_len, "%d", inst->same_freq > 0 ? (int)inst->same_freq : 0);
     if (strcmp(key, "master") == 0) return snprintf(buf, buf_len, "%.4f", inst->master.master_level);
 
@@ -1700,6 +1739,8 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
         if (strcmp(key, k) == 0) return snprintf(buf, buf_len, "%.4f", v->noise_decay);
         snprintf(k, sizeof(k), "v%d_level", i+1);
         if (strcmp(key, k) == 0) return snprintf(buf, buf_len, "%.4f", v->level);
+        snprintf(k, sizeof(k), "v%d_pan", i+1);
+        if (strcmp(key, k) == 0) return snprintf(buf, buf_len, "%.4f", v->pan);
     }
 
     return -1;
@@ -1714,25 +1755,35 @@ static void render_block(void *instance, int16_t *out_lr, int frames) {
     }
 
     for (int i = 0; i < frames; i++) {
-        float mix = 0.0f;
+        float mix_l = 0.0f, mix_r = 0.0f;
 
         for (int v = 0; v < NUM_VOICES; v++) {
             float vol = onepole(&inst->voice_vol_smooth[v], inst->voice_vol[v], 0.002f);
-            float sample = voice_render_sample(&inst->voice[v]);
-            mix += sample * vol;
+            float pan = onepole(&inst->voice_pan_smooth[v], inst->voice[v].pan, 0.002f);
+            float sample = voice_render_sample(&inst->voice[v]) * vol;
+            /* Constant-power panning: L = cos(angle), R = sin(angle) */
+            float angle = (pan + 1.0f) * 0.25f * 3.14159265f; /* 0..pi/2 */
+            mix_l += sample * cosf(angle);
+            mix_r += sample * sinf(angle);
         }
 
         /* Scale down (8 voices) */
-        mix *= 0.35f;
+        mix_l *= 0.35f;
+        mix_r *= 0.35f;
 
-        /* Master FX */
-        mix = master_process(&inst->master, mix);
+        /* Master FX (process L and R independently) */
+        /* Use a single mono master for simplicity — average then re-spread */
+        float mono = (mix_l + mix_r) * 0.5f;
+        float stereo_diff = mix_l - mix_r;
+        mono = master_process(&inst->master, mono);
+        float out_l = mono + stereo_diff * 0.5f;
+        float out_r = mono - stereo_diff * 0.5f;
 
         /* Clamp and output stereo int16 */
-        mix = clampf(mix, -1.0f, 1.0f);
-        int16_t s = (int16_t)(mix * 32767.0f);
-        out_lr[i * 2]     = s;
-        out_lr[i * 2 + 1] = s;
+        out_l = clampf(out_l, -1.0f, 1.0f);
+        out_r = clampf(out_r, -1.0f, 1.0f);
+        out_lr[i * 2]     = (int16_t)(out_l * 32767.0f);
+        out_lr[i * 2 + 1] = (int16_t)(out_r * 32767.0f);
     }
 }
 
