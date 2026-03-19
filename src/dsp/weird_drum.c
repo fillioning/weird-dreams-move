@@ -1117,9 +1117,14 @@ static void set_param(void *instance, const char *key, const char *val) {
                                 inst->voice[i].pan = (inst_random(inst) * 2.0f - 1.0f) * 0.8f;
                         }
                     } break;
+                case 5: /* All Mono — reset all panning to center */
+                    if (delta != 0) {
+                        for (int i = 0; i < NUM_VOICES; i++)
+                            inst->voice[i].pan = 0.0f;
+                    } break;
             }
         } else if (page == 3) {
-            /* Pan page: 8 pan knobs */
+            /* Pan page: 8 pan knobs (-1..+1) */
             if (knob >= 0 && knob < NUM_VOICES)
                 inst->voice[knob].pan = clampf(inst->voice[knob].pan + delta * 0.02f, -1.0f, 1.0f);
         } else {
@@ -1189,6 +1194,10 @@ static void set_param(void *instance, const char *key, const char *val) {
     if (strcmp(key, "kit") == 0) { apply_kit(inst, (int)clampf(f, 0, NUM_KITS-1)); return; }
     if (strcmp(key, "rnd_voice") == 0) { if (f != 0) { int vi = inst->current_page >= 3 ? inst->current_page - 3 : 0; randomize_voice(inst, vi); } return; }
     if (strcmp(key, "rnd_patch") == 0) { if (f != 0) randomize_patch(inst); return; }
+    if (strcmp(key, "all_mono") == 0) {
+        if (f != 0) { for (int i=0;i<NUM_VOICES;i++) inst->voice[i].pan=0.0f; }
+        return;
+    }
     if (strcmp(key, "rnd_pan") == 0) {
         if (f != 0) { for (int i=0;i<NUM_VOICES;i++) { if (inst->voice[i].preset<=4) inst->voice[i].pan=0; else inst->voice[i].pan=(inst_random(inst)*2.0f-1.0f)*0.8f; } }
         return;
@@ -1343,7 +1352,7 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
         if (page == 0) return snprintf(buf, buf_len, "%s", MIXER_KNOB_NAMES[knob]);
         if (page == 1) return snprintf(buf, buf_len, "%s", GENERAL_KNOB_NAMES[knob]);
         if (page == 2) {
-            static const char *PATCH_N[8] = {"Kit","Rnd Voice","Rnd Patch","SameFreq","Rnd Pan","","",""};
+            static const char *PATCH_N[8] = {"Kit","Rnd Voice","Rnd Patch","SameFreq","Rnd Pan","All Mono","",""};
             return snprintf(buf, buf_len, "%s", PATCH_N[knob]);
         }
         if (page == 3) return snprintf(buf, buf_len, "%s", MIXER_KNOB_NAMES[knob]);
@@ -1384,6 +1393,7 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
                 case 2: return snprintf(buf, buf_len, "Turn");
                 case 3: return snprintf(buf, buf_len, "%dHz", inst->same_freq > 0 ? (int)inst->same_freq : 0);
                 case 4: return snprintf(buf, buf_len, "Turn");
+                case 5: return snprintf(buf, buf_len, "Turn");
                 default: return snprintf(buf, buf_len, "-");
             }
         }
@@ -1445,6 +1455,18 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
             "{\"key\":\"q_mid\",\"name\":\"Mid Q\",\"type\":\"float\",\"min\":0.3,\"max\":8,\"step\":0.1},"
             "{\"key\":\"q_hi\",\"name\":\"Hi Q\",\"type\":\"float\",\"min\":0.3,\"max\":8,\"step\":0.1},"
             "{\"key\":\"kit\",\"name\":\"Kit\",\"type\":\"int\",\"min\":0,\"max\":29,\"step\":1},"
+            "{\"key\":\"rnd_voice\",\"name\":\"Rnd Voice\",\"type\":\"int\",\"min\":0,\"max\":1,\"step\":1},"
+            "{\"key\":\"rnd_patch\",\"name\":\"Rnd Patch\",\"type\":\"int\",\"min\":0,\"max\":1,\"step\":1},"
+            "{\"key\":\"rnd_pan\",\"name\":\"Rnd Pan\",\"type\":\"int\",\"min\":0,\"max\":1,\"step\":1},"
+            "{\"key\":\"all_mono\",\"name\":\"All Mono\",\"type\":\"int\",\"min\":0,\"max\":1,\"step\":1},"
+            "{\"key\":\"v1_pan\",\"name\":\"V1 Pan\",\"type\":\"float\",\"min\":-1,\"max\":1,\"step\":0.02},"
+            "{\"key\":\"v2_pan\",\"name\":\"V2 Pan\",\"type\":\"float\",\"min\":-1,\"max\":1,\"step\":0.02},"
+            "{\"key\":\"v3_pan\",\"name\":\"V3 Pan\",\"type\":\"float\",\"min\":-1,\"max\":1,\"step\":0.02},"
+            "{\"key\":\"v4_pan\",\"name\":\"V4 Pan\",\"type\":\"float\",\"min\":-1,\"max\":1,\"step\":0.02},"
+            "{\"key\":\"v5_pan\",\"name\":\"V5 Pan\",\"type\":\"float\",\"min\":-1,\"max\":1,\"step\":0.02},"
+            "{\"key\":\"v6_pan\",\"name\":\"V6 Pan\",\"type\":\"float\",\"min\":-1,\"max\":1,\"step\":0.02},"
+            "{\"key\":\"v7_pan\",\"name\":\"V7 Pan\",\"type\":\"float\",\"min\":-1,\"max\":1,\"step\":0.02},"
+            "{\"key\":\"v8_pan\",\"name\":\"V8 Pan\",\"type\":\"float\",\"min\":-1,\"max\":1,\"step\":0.02},"
             "{\"key\":\"same_freq\",\"name\":\"SameFreq\",\"type\":\"int\",\"min\":20,\"max\":20000,\"step\":1},"
             "{\"key\":\"master\",\"name\":\"Master\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
             "{\"key\":\"v1_freq\",\"name\":\"V1 Freq\",\"type\":\"int\",\"min\":20,\"max\":20000,\"step\":1},"
@@ -1608,8 +1630,8 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
             "\"knobs\":[\"comp\",\"dj_filter\",\"eq_lo\",\"lo_freq\",\"eq_mid\",\"mid_freq\",\"eq_hi\",\"hi_freq\"],"
             "\"params\":[\"comp\",\"dj_filter\",\"eq_lo\",\"lo_freq\",\"eq_mid\",\"mid_freq\",\"eq_hi\",\"hi_freq\",\"q_lo\",\"q_mid\",\"q_hi\",\"master\"]},"
             "\"Patch\":{\"label\":\"Patch\","
-            "\"knobs\":[\"kit\",\"rnd_voice\",\"rnd_patch\",\"same_freq\",\"rnd_pan\"],"
-            "\"params\":[\"kit\",\"rnd_voice\",\"rnd_patch\",\"same_freq\",\"rnd_pan\"]},"
+            "\"knobs\":[\"kit\",\"rnd_voice\",\"rnd_patch\",\"same_freq\",\"rnd_pan\",\"all_mono\"],"
+            "\"params\":[\"kit\",\"rnd_voice\",\"rnd_patch\",\"same_freq\",\"rnd_pan\",\"all_mono\"]},"
             "\"Pan\":{\"label\":\"Pan\","
             "\"knobs\":[\"v1_pan\",\"v2_pan\",\"v3_pan\",\"v4_pan\",\"v5_pan\",\"v6_pan\",\"v7_pan\",\"v8_pan\"],"
             "\"params\":[\"v1_pan\",\"v2_pan\",\"v3_pan\",\"v4_pan\",\"v5_pan\",\"v6_pan\",\"v7_pan\",\"v8_pan\"]},"
@@ -1696,6 +1718,7 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
     if (strcmp(key, "rnd_voice") == 0) return snprintf(buf, buf_len, "0");
     if (strcmp(key, "rnd_patch") == 0) return snprintf(buf, buf_len, "0");
     if (strcmp(key, "rnd_pan") == 0) return snprintf(buf, buf_len, "0");
+    if (strcmp(key, "all_mono") == 0) return snprintf(buf, buf_len, "0");
     if (strcmp(key, "same_freq") == 0) return snprintf(buf, buf_len, "%d", inst->same_freq > 0 ? (int)inst->same_freq : 0);
     if (strcmp(key, "master") == 0) return snprintf(buf, buf_len, "%.4f", inst->master.master_level);
 

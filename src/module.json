@@ -58,8 +58,8 @@
                 },
                 "Patch": {
                     "label": "Patch",
-                    "knobs": ["kit", "rnd_voice", "rnd_patch", "same_freq", "rnd_pan"],
-                    "params": ["kit", "rnd_voice", "rnd_patch", "same_freq", "rnd_pan"]
+                    "knobs": ["kit", "rnd_voice", "rnd_patch", "same_freq", "rnd_pan", "all_mono"],
+                    "params": ["kit", "rnd_voice", "rnd_patch", "same_freq", "rnd_pan", "all_mono"]
                 },
                 "Pan": {
                     "label": "Pan",
