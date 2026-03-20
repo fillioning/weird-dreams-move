@@ -14,7 +14,7 @@
  *   - Per-voice level
  *
  * Master bus: compressor, distortion, 3-band EQ
- * UI: Mixer page, General page, 8 voice pages
+ * UI: Patch page, General page, dynamic Voice page (pad-selected)
  * ============================================================================ */
 
 #include <math.h>
@@ -871,7 +871,8 @@ typedef struct {
     float       voice_vol[NUM_VOICES];   /* mixer page volumes */
     float       voice_vol_smooth[NUM_VOICES];
     float       voice_pan_smooth[NUM_VOICES]; /* smoothed pan */
-    int         current_page;            /* 0=mixer, 1=general, 2=patch, 3=pan, 4..11=voice1..8 */
+    int         current_page;            /* 0=patch, 1=general, 2=voice */
+    int         current_voice;           /* 0..7, auto-selected from pad MIDI */
     int         midi_voice_cursor;       /* round-robin for MIDI trigger */
     int         current_kit;             /* 0..29 kit preset index */
     float       same_freq;               /* 0=off, >0 = master freq override (20..20000) */
@@ -1076,34 +1077,16 @@ static void apply_kit(wd_instance_t *inst, int kit) {
 
 /* ── Page/Knob mapping tables ── */
 
-/* Mixer page: 8 volume knobs */
-static const char *MIXER_KNOB_KEYS[8] = {
-    "v1_vol", "v2_vol", "v3_vol", "v4_vol",
-    "v5_vol", "v6_vol", "v7_vol", "v8_vol"
-};
-static const char *MIXER_KNOB_NAMES[8] = {
-    "Kick", "Snare", "Tom", "Clap",
-    "Rim", "HiHat", "Cymbal", "Tom2"
-};
-
 /* General page: crush, filter, 3-band EQ (gain+freq paired) */
-static const char *GENERAL_KNOB_KEYS[8] = {
-    "comp", "dj_filter", "eq_lo", "lo_freq",
-    "eq_mid", "mid_freq", "eq_hi", "hi_freq"
-};
 static const char *GENERAL_KNOB_NAMES[8] = {
     "Crush", "Filter", "Lo Gain", "Lo Freq",
     "Mid Gain", "Mid Freq", "Hi Gain", "Hi Freq"
 };
 
-/* Per-voice page: freq, decay, wave, p.env amt, mix, cutoff, distort, preset */
-static const char *VOICE_KNOB_SUFFIXES[8] = {
-    "_freq", "_decay", "_wave", "_penv",
-    "_mix", "_cutoff", "_dist", "_preset"
-};
+/* Dynamic voice page: vol, pan, freq, decay, wave, mix, cutoff, preset */
 static const char *VOICE_KNOB_NAMES[8] = {
-    "Freq", "Decay", "Wave", "P.Env",
-    "Mix", "Cutoff", "Distort", "Preset"
+    "Volume", "Pan", "Freq", "Decay",
+    "Wave", "Mix", "Cutoff", "Preset"
 };
 
 static const char *PRESET_NAMES[NUM_PRESETS] = {
@@ -1193,6 +1176,7 @@ static void *create_instance(const char *module_dir, const char *json_defaults) 
 
     master_init(&inst->master);
     inst->current_page = 0;
+    inst->current_voice = 0;
     inst->midi_voice_cursor = 0;
     inst->current_kit = 0;
     inst->same_freq = 0.0f;
@@ -1228,8 +1212,9 @@ static void on_midi(void *instance, const uint8_t *msg, int len, int source) {
         }
         voice_trigger(&inst->voice[voice_idx], (float)vel / 127.0f);
 
-        /* Pad selects voice page for knob editing */
-        inst->current_page = 4 + voice_idx;
+        /* Pad selects current voice for dynamic Voice page */
+        inst->current_voice = voice_idx;
+        inst->current_page = 2; /* Voice page */
     }
 }
 
@@ -1238,19 +1223,11 @@ static void set_param(void *instance, const char *key, const char *val) {
     wd_instance_t *inst = (wd_instance_t *)instance;
     if (!inst || !key || !val) return;
 
-    /* Page switching: 0=mixer, 1=general, 2=patch, 3=pan, 4..11=voice1..8 */
+    /* Page switching: 0=patch, 1=general, 2=voice */
     if (strcmp(key, "_level") == 0) {
-        if (strcmp(val, "Mixer") == 0) inst->current_page = 0;
+        if (strcmp(val, "Patch") == 0) inst->current_page = 0;
         else if (strcmp(val, "General") == 0) inst->current_page = 1;
-        else if (strcmp(val, "Patch") == 0) inst->current_page = 2;
-        else if (strcmp(val, "Pan") == 0) inst->current_page = 3;
-        else {
-            for (int i = 0; i < NUM_VOICES; i++) {
-                char pg[16];
-                snprintf(pg, sizeof(pg), "Voice %d", i + 1);
-                if (strcmp(val, pg) == 0) { inst->current_page = 4 + i; break; }
-            }
-        }
+        else if (strcmp(val, "Voice") == 0) inst->current_page = 2;
         return;
     }
 
@@ -1262,22 +1239,6 @@ static void set_param(void *instance, const char *key, const char *val) {
         int page = inst->current_page;
 
         if (page == 0) {
-            /* Mixer page: adjust voice volumes */
-            inst->voice_vol[knob] = clampf(inst->voice_vol[knob] + delta * 0.01f, 0.0f, 1.0f);
-        } else if (page == 1) {
-            /* General page: comp, dist, lo gain+freq, mid gain+freq, hi gain+freq */
-            float step = 0.01f;
-            switch (knob) {
-                case 0: inst->master.comp_amount = clampf(inst->master.comp_amount + delta * step, 0.0f, 1.0f); break;
-                case 1: inst->master.dj_filter = clampf(inst->master.dj_filter + delta * 0.005f, 0.0f, 1.0f); break;
-                case 2: inst->master.eq_low_gain = clampf(inst->master.eq_low_gain + delta * 0.24f, -12.0f, 12.0f); break;
-                case 3: inst->master.eq_low_freq = clampf(inst->master.eq_low_freq + delta * 4.8f, 20.0f, 500.0f); break;
-                case 4: inst->master.eq_mid_gain = clampf(inst->master.eq_mid_gain + delta * 0.24f, -12.0f, 12.0f); break;
-                case 5: inst->master.eq_mid_freq = clampf(inst->master.eq_mid_freq + delta * 80.0f, 200.0f, 8000.0f); break;
-                case 6: inst->master.eq_high_gain = clampf(inst->master.eq_high_gain + delta * 0.24f, -12.0f, 12.0f); break;
-                case 7: inst->master.eq_high_freq = clampf(inst->master.eq_high_freq + delta * 160.0f, 2000.0f, 18000.0f); break;
-            }
-        } else if (page == 2) {
             /* Patch page: Kit, Rnd Kit, Rnd Voice, Rnd Pitch, SameFreq, Init Freq, Rnd Pan, All Mono */
             switch (knob) {
                 case 0: { /* Kit (jog) */
@@ -1287,11 +1248,9 @@ static void set_param(void *instance, const char *key, const char *val) {
                 case 1: /* Rnd Kit — randomize entire kit */
                     if (delta != 0) randomize_patch(inst);
                     break;
-                case 2: /* Rnd Voice — randomize the last-played voice */
-                    if (delta != 0) {
-                        int vi = inst->current_page >= 4 ? inst->current_page - 4 : 0;
-                        randomize_voice(inst, vi);
-                    } break;
+                case 2: /* Rnd Voice — randomize the current voice */
+                    if (delta != 0) randomize_voice(inst, inst->current_voice);
+                    break;
                 case 3: /* Rnd Pitch — apply a random musical scale to all voices */
                     if (delta != 0) randomize_pitch(inst);
                     break;
@@ -1331,43 +1290,50 @@ static void set_param(void *instance, const char *key, const char *val) {
                             inst->voice[i].pan = 0.0f;
                     } break;
             }
-        } else if (page == 3) {
-            /* Pan page: 8 pan knobs (-1..+1) */
-            if (knob >= 0 && knob < NUM_VOICES)
-                inst->voice[knob].pan = clampf(inst->voice[knob].pan + delta * 0.02f, -1.0f, 1.0f);
+        } else if (page == 1) {
+            /* General page: comp, filter, 3-band EQ (gain+freq paired) */
+            switch (knob) {
+                case 0: inst->master.comp_amount = clampf(inst->master.comp_amount + delta * 0.01f, 0.0f, 1.0f); break;
+                case 1: inst->master.dj_filter = clampf(inst->master.dj_filter + delta * 0.005f, 0.0f, 1.0f); break;
+                case 2: inst->master.eq_low_gain = clampf(inst->master.eq_low_gain + delta * 0.24f, -12.0f, 12.0f); break;
+                case 3: inst->master.eq_low_freq = clampf(inst->master.eq_low_freq + delta * 4.8f, 20.0f, 500.0f); break;
+                case 4: inst->master.eq_mid_gain = clampf(inst->master.eq_mid_gain + delta * 0.24f, -12.0f, 12.0f); break;
+                case 5: inst->master.eq_mid_freq = clampf(inst->master.eq_mid_freq + delta * 80.0f, 200.0f, 8000.0f); break;
+                case 6: inst->master.eq_high_gain = clampf(inst->master.eq_high_gain + delta * 0.24f, -12.0f, 12.0f); break;
+                case 7: inst->master.eq_high_freq = clampf(inst->master.eq_high_freq + delta * 160.0f, 2000.0f, 18000.0f); break;
+            }
         } else {
-            /* Voice pages (4..11) */
-            int vi = page - 4;
-            if (vi < 0 || vi >= NUM_VOICES) return;
+            /* Voice page (dynamic): Volume, Pan, Freq, Decay, Wave, Mix, Cutoff, Preset */
+            int vi = inst->current_voice;
             wd_voice_t *v = &inst->voice[vi];
             switch (knob) {
-                case 0: { /* Freq (exponential) */
+                case 0: /* Volume */
+                    inst->voice_vol[vi] = clampf(inst->voice_vol[vi] + delta * 0.01f, 0.0f, 1.0f);
+                    break;
+                case 1: /* Pan */
+                    v->pan = clampf(v->pan + delta * 0.02f, -1.0f, 1.0f);
+                    break;
+                case 2: { /* Freq (exponential) */
                     float k = freq_to_knob(v->freq);
                     k = clampf(k + delta * 0.005f, 0.0f, 1.0f);
                     v->freq = knob_to_freq(k);
                 } break;
-                case 1: { /* Decay (exponential) */
+                case 3: { /* Decay (exponential) */
                     float k = decay_to_knob(v->decay);
                     k = clampf(k + delta * 0.01f, 0.0f, 1.0f);
                     v->decay = knob_to_decay(k);
                 } break;
-                case 2: /* Wave (continuous morph) */
+                case 4: /* Wave (continuous morph) */
                     v->wave = clampf(v->wave + delta * 0.01f, 0.0f, 1.0f);
                     break;
-                case 3: /* P.Env Amount */
-                    v->pitch_env_amt = clampf(v->pitch_env_amt + delta * 0.01f, 0.0f, 1.0f);
-                    break;
-                case 4: /* Mix */
+                case 5: /* Mix */
                     v->mix = clampf(v->mix + delta * 0.01f, 0.0f, 1.0f);
                     break;
-                case 5: { /* Cutoff (exponential) */
+                case 6: { /* Cutoff (exponential) */
                     float k = cutoff_to_knob(v->filter_cutoff);
                     k = clampf(k + delta * 0.005f, 0.0f, 1.0f);
                     v->filter_cutoff = knob_to_cutoff(k);
                 } break;
-                case 6: /* Distortion */
-                    v->distortion = clampf(v->distortion + delta * 0.5f, 0.0f, 50.0f);
-                    break;
                 case 7: { /* Preset (jog) */
                     v->preset = (v->preset + (delta > 0 ? 1 : -1) + NUM_PRESETS) % NUM_PRESETS;
                     if (v->preset < NUM_PRESETS - 1) voice_apply_preset(v, v->preset);
@@ -1400,7 +1366,7 @@ static void set_param(void *instance, const char *key, const char *val) {
     if (strcmp(key, "q_mid") == 0) { inst->master.eq_mid_q = clampf(f, 0.3f, 8.0f); return; }
     if (strcmp(key, "q_hi") == 0) { inst->master.eq_high_q = clampf(f, 0.3f, 8.0f); return; }
     if (strcmp(key, "kit") == 0) { apply_kit(inst, (int)clampf(f, 0, NUM_KITS-1)); return; }
-    if (strcmp(key, "rnd_voice") == 0) { if (f != 0) { int vi = inst->current_page >= 4 ? inst->current_page - 4 : 0; randomize_voice(inst, vi); } return; }
+    if (strcmp(key, "rnd_voice") == 0) { if (f != 0) randomize_voice(inst, inst->current_voice); return; }
     if (strcmp(key, "rnd_kit") == 0) { if (f != 0) randomize_patch(inst); return; }
     if (strcmp(key, "rnd_pitch") == 0) { if (f != 0) randomize_pitch(inst); return; }
     if (strcmp(key, "init_freq") == 0) {
@@ -1413,6 +1379,14 @@ static void set_param(void *instance, const char *key, const char *val) {
     }
     if (strcmp(key, "all_mono") == 0) {
         if (f != 0) { for (int i=0;i<NUM_VOICES;i++) inst->voice[i].pan=0.0f; }
+        return;
+    }
+    if (strcmp(key, "reset_eq") == 0) {
+        if (f != 0) {
+            inst->master.eq_low_gain = 0.0f; inst->master.eq_mid_gain = 0.0f; inst->master.eq_high_gain = 0.0f;
+            inst->master.eq_low_freq = 200.0f; inst->master.eq_mid_freq = 1000.0f; inst->master.eq_high_freq = 8000.0f;
+            inst->master.eq_low_q = 1.0f; inst->master.eq_mid_q = 1.0f; inst->master.eq_high_q = 1.0f;
+        }
         return;
     }
     if (strcmp(key, "rnd_pan") == 0) {
@@ -1487,6 +1461,54 @@ static void set_param(void *instance, const char *key, const char *val) {
         if (strcmp(key, k) == 0) { v->level = clampf(f, 0.0f, 1.0f); return; }
         snprintf(k, sizeof(k), "v%d_pan", i+1);
         if (strcmp(key, k) == 0) { v->pan = clampf(f, -1.0f, 1.0f); return; }
+    }
+
+    /* Virtual cv_* params — redirect to current voice */
+    if (strncmp(key, "cv_", 3) == 0) {
+        int vi = inst->current_voice;
+        wd_voice_t *v = &inst->voice[vi];
+        const char *suffix = key + 3;
+        if (strcmp(suffix, "vol") == 0) { inst->voice_vol[vi] = clampf(f, 0.0f, 1.0f); return; }
+        if (strcmp(suffix, "pan") == 0) { v->pan = clampf(f, -1.0f, 1.0f); return; }
+        if (strcmp(suffix, "freq") == 0) { v->freq = clampf(f, 20.0f, 20000.0f); return; }
+        if (strcmp(suffix, "decay") == 0) { v->decay = clampf(f, 0.0001f, 4.0f); return; }
+        if (strcmp(suffix, "wave") == 0) {
+            if (strcmp(val, "Sine") == 0) v->wave = 0.0f;
+            else if (strcmp(val, "Triangle") == 0) v->wave = 0.33f;
+            else if (strcmp(val, "Saw") == 0) v->wave = 0.66f;
+            else if (strcmp(val, "Square") == 0) v->wave = 1.0f;
+            else v->wave = clampf(f, 0.0f, 1.0f);
+            return;
+        }
+        if (strcmp(suffix, "mix") == 0) { v->mix = clampf(f, 0.0f, 1.0f); return; }
+        if (strcmp(suffix, "cutoff") == 0) { v->filter_cutoff = clampf(f, 20.0f, 18000.0f); return; }
+        if (strcmp(suffix, "preset") == 0) {
+            int p = -1;
+            for (int j = 0; j < NUM_PRESETS; j++) {
+                if (strcmp(val, PRESET_NAMES[j]) == 0) { p = j; break; }
+            }
+            if (p < 0) p = (int)f;
+            if (p >= 0 && p < NUM_PRESETS - 1) voice_apply_preset(v, p);
+            else v->preset = NUM_PRESETS - 1;
+            return;
+        }
+        if (strcmp(suffix, "attack") == 0) { v->attack = clampf(f, 0.0001f, 1.0f); return; }
+        if (strcmp(suffix, "penv") == 0) { v->pitch_env_amt = clampf(f, 0.0f, 1.0f); return; }
+        if (strcmp(suffix, "prate") == 0) { v->pitch_env_rate = clampf(f, 0.001f, 2.0f); return; }
+        if (strcmp(suffix, "lamt") == 0) { v->pitch_lfo_amt = clampf(f, 0.0f, 1.0f); return; }
+        if (strcmp(suffix, "lrate") == 0) { v->pitch_lfo_rate = clampf(f, 0.1f, 80.0f); return; }
+        if (strcmp(suffix, "ftype") == 0) {
+            if (strcmp(val, "LP") == 0) v->filter_type = 0;
+            else if (strcmp(val, "HP") == 0) v->filter_type = 1;
+            else if (strcmp(val, "BP") == 0) v->filter_type = 2;
+            else v->filter_type = (int)clampf(f, 0, 2);
+            return;
+        }
+        if (strcmp(suffix, "fres") == 0) { v->filter_res = clampf(f, 1.0f, 5.0f); return; }
+        if (strcmp(suffix, "nattack") == 0) { v->noise_attack = clampf(f, 0.0001f, 1.0f); return; }
+        if (strcmp(suffix, "ndecay") == 0) { v->noise_decay = clampf(f, 0.0001f, 1.0f); return; }
+        if (strcmp(suffix, "dist") == 0) { v->distortion = clampf(f, 0.0f, 50.0f); return; }
+        if (strcmp(suffix, "level") == 0) { v->level = clampf(f, 0.0f, 1.0f); return; }
     }
 
     /* State restore (all params in one string) */
@@ -1566,15 +1588,13 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
         if (knob < 0 || knob > 7) return -1;
         int page = inst->current_page;
 
-        if (page == 0) return snprintf(buf, buf_len, "%s", MIXER_KNOB_NAMES[knob]);
-        if (page == 1) return snprintf(buf, buf_len, "%s", GENERAL_KNOB_NAMES[knob]);
-        if (page == 2) {
+        if (page == 0) {
             static const char *PATCH_N[8] = {"Kit","Rnd Kit","Rnd Voice","Rnd Pitch","SameFreq","Init Freq","Rnd Pan","All Mono"};
             return snprintf(buf, buf_len, "%s", PATCH_N[knob]);
         }
-        if (page == 3) return snprintf(buf, buf_len, "%s", MIXER_KNOB_NAMES[knob]);
-        /* Voice pages */
-        return snprintf(buf, buf_len, "%s", VOICE_KNOB_NAMES[knob]);
+        if (page == 1) return snprintf(buf, buf_len, "%s", GENERAL_KNOB_NAMES[knob]);
+        /* Voice page (dynamic) — show voice number in name */
+        return snprintf(buf, buf_len, "V%d %s", inst->current_voice + 1, VOICE_KNOB_NAMES[knob]);
     }
 
     /* Knob values */
@@ -1584,26 +1604,7 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
         int page = inst->current_page;
 
         if (page == 0) {
-            return snprintf(buf, buf_len, "%d%%", (int)(inst->voice_vol[knob] * 100.0f));
-        }
-        if (page == 1) {
-            switch (knob) {
-                case 0: return snprintf(buf, buf_len, "%d%%", (int)(inst->master.comp_amount * 100.0f));
-                case 1: {
-                    float f = inst->master.dj_filter;
-                    if (f < 0.49f) return snprintf(buf, buf_len, "LP %d%%", (int)((0.49f - f) / 0.49f * 100.0f));
-                    if (f > 0.51f) return snprintf(buf, buf_len, "HP %d%%", (int)((f - 0.51f) / 0.49f * 100.0f));
-                    return snprintf(buf, buf_len, "Off");
-                }
-                case 2: return snprintf(buf, buf_len, "%+.0fdB", inst->master.eq_low_gain);
-                case 3: return snprintf(buf, buf_len, "%dHz", (int)inst->master.eq_low_freq);
-                case 4: return snprintf(buf, buf_len, "%+.0fdB", inst->master.eq_mid_gain);
-                case 5: return snprintf(buf, buf_len, "%dHz", (int)inst->master.eq_mid_freq);
-                case 6: return snprintf(buf, buf_len, "%+.0fdB", inst->master.eq_high_gain);
-                case 7: return snprintf(buf, buf_len, "%dHz", (int)inst->master.eq_high_freq);
-            }
-        }
-        if (page == 2) {
+            /* Patch page */
             switch (knob) {
                 case 0: return snprintf(buf, buf_len, "%s", KIT_NAMES[inst->current_kit]);
                 case 1: return snprintf(buf, buf_len, "Turn");
@@ -1622,23 +1623,39 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
                 case 7: return snprintf(buf, buf_len, "Turn");
             }
         }
-        if (page == 3) {
-            /* Pan page */
-            if (knob < NUM_VOICES) {
-                float p = inst->voice[knob].pan;
-                if (p < -0.01f) return snprintf(buf, buf_len, "L%d", (int)(-p * 100));
-                if (p > 0.01f) return snprintf(buf, buf_len, "R%d", (int)(p * 100));
-                return snprintf(buf, buf_len, "C");
+        if (page == 1) {
+            /* General page */
+            switch (knob) {
+                case 0: return snprintf(buf, buf_len, "%d%%", (int)(inst->master.comp_amount * 100.0f));
+                case 1: {
+                    float f = inst->master.dj_filter;
+                    if (f < 0.49f) return snprintf(buf, buf_len, "LP %d%%", (int)((0.49f - f) / 0.49f * 100.0f));
+                    if (f > 0.51f) return snprintf(buf, buf_len, "HP %d%%", (int)((f - 0.51f) / 0.49f * 100.0f));
+                    return snprintf(buf, buf_len, "Off");
+                }
+                case 2: return snprintf(buf, buf_len, "%+.0fdB", inst->master.eq_low_gain);
+                case 3: return snprintf(buf, buf_len, "%dHz", (int)inst->master.eq_low_freq);
+                case 4: return snprintf(buf, buf_len, "%+.0fdB", inst->master.eq_mid_gain);
+                case 5: return snprintf(buf, buf_len, "%dHz", (int)inst->master.eq_mid_freq);
+                case 6: return snprintf(buf, buf_len, "%+.0fdB", inst->master.eq_high_gain);
+                case 7: return snprintf(buf, buf_len, "%dHz", (int)inst->master.eq_high_freq);
             }
         }
-        /* Voice page */
-        int vi = page - 4;
-        if (vi < 0 || vi >= NUM_VOICES) return -1;
-        wd_voice_t *v = &inst->voice[vi];
-        switch (knob) {
-            case 0: return snprintf(buf, buf_len, "%dHz", (int)v->freq);
-            case 1: return snprintf(buf, buf_len, "%dms", (int)(v->decay * 1000.0f));
-            case 2: {
+        /* Voice page (dynamic) — Volume, Pan, Freq, Decay, Wave, Mix, Cutoff, Preset */
+        {
+            int vi = inst->current_voice;
+            wd_voice_t *v = &inst->voice[vi];
+            switch (knob) {
+                case 0: return snprintf(buf, buf_len, "%d%%", (int)(inst->voice_vol[vi] * 100.0f));
+                case 1: {
+                    float p = v->pan;
+                    if (p < -0.01f) return snprintf(buf, buf_len, "L%d", (int)(-p * 100));
+                    if (p > 0.01f) return snprintf(buf, buf_len, "R%d", (int)(p * 100));
+                    return snprintf(buf, buf_len, "C");
+                }
+                case 2: return snprintf(buf, buf_len, "%dHz", (int)v->freq);
+                case 3: return snprintf(buf, buf_len, "%dms", (int)(v->decay * 1000.0f));
+                case 4: {
                     float w = v->wave * 3.0f;
                     if (w < 0.1f) return snprintf(buf, buf_len, "Sine");
                     if (w < 1.0f) return snprintf(buf, buf_len, "Si>Tri %d%%", (int)(w * 100));
@@ -1648,11 +1665,10 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
                     if (w < 3.0f) return snprintf(buf, buf_len, "Sw>Sqr %d%%", (int)((w-2)*100));
                     return snprintf(buf, buf_len, "Square");
                 }
-            case 3: return snprintf(buf, buf_len, "%d%%", (int)(v->pitch_env_amt * 100.0f));
-            case 4: return snprintf(buf, buf_len, "%d%%", (int)(v->mix * 100.0f));
-            case 5: return snprintf(buf, buf_len, "%dHz", (int)v->filter_cutoff);
-            case 6: return snprintf(buf, buf_len, "%.0fdB", v->distortion);
-            case 7: return snprintf(buf, buf_len, "%s", PRESET_NAMES[v->preset]);
+                case 5: return snprintf(buf, buf_len, "%d%%", (int)(v->mix * 100.0f));
+                case 6: return snprintf(buf, buf_len, "%dHz", (int)v->filter_cutoff);
+                case 7: return snprintf(buf, buf_len, "%s", PRESET_NAMES[v->preset]);
+            }
         }
     }
 
@@ -1679,6 +1695,7 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
             "{\"key\":\"q_lo\",\"name\":\"Lo Q\",\"type\":\"float\",\"min\":0.3,\"max\":8,\"step\":0.1},"
             "{\"key\":\"q_mid\",\"name\":\"Mid Q\",\"type\":\"float\",\"min\":0.3,\"max\":8,\"step\":0.1},"
             "{\"key\":\"q_hi\",\"name\":\"Hi Q\",\"type\":\"float\",\"min\":0.3,\"max\":8,\"step\":0.1},"
+            "{\"key\":\"reset_eq\",\"name\":\"Reset EQ\",\"type\":\"int\",\"min\":0,\"max\":1,\"step\":1},"
             "{\"key\":\"kit\",\"name\":\"Kit\",\"type\":\"int\",\"min\":0,\"max\":63,\"step\":1},"
             "{\"key\":\"rnd_kit\",\"name\":\"Rnd Kit\",\"type\":\"int\",\"min\":0,\"max\":1,\"step\":1},"
             "{\"key\":\"rnd_voice\",\"name\":\"Rnd Voice\",\"type\":\"int\",\"min\":0,\"max\":1,\"step\":1},"
@@ -1831,7 +1848,26 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
             "{\"key\":\"v8_fres\",\"name\":\"V8 Reso\",\"type\":\"float\",\"min\":1,\"max\":5,\"step\":0.1},"
             "{\"key\":\"v8_nattack\",\"name\":\"V8 N.Atk\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.001},"
             "{\"key\":\"v8_ndecay\",\"name\":\"V8 N.Dec\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
-            "{\"key\":\"v8_level\",\"name\":\"V8 Level\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01}"
+            "{\"key\":\"v8_level\",\"name\":\"V8 Level\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"cv_vol\",\"name\":\"Volume\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"cv_pan\",\"name\":\"Pan\",\"type\":\"float\",\"min\":-1,\"max\":1,\"step\":0.02},"
+            "{\"key\":\"cv_freq\",\"name\":\"Freq\",\"type\":\"int\",\"min\":20,\"max\":20000,\"step\":1},"
+            "{\"key\":\"cv_attack\",\"name\":\"Attack\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.001},"
+            "{\"key\":\"cv_decay\",\"name\":\"Decay\",\"type\":\"float\",\"min\":0,\"max\":4,\"step\":0.01},"
+            "{\"key\":\"cv_wave\",\"name\":\"Wave\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"cv_penv\",\"name\":\"P.Env\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"cv_prate\",\"name\":\"P.Rate\",\"type\":\"float\",\"min\":0,\"max\":2,\"step\":0.01},"
+            "{\"key\":\"cv_lamt\",\"name\":\"LFO Amt\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"cv_lrate\",\"name\":\"LFO Rate\",\"type\":\"float\",\"min\":0.1,\"max\":80,\"step\":0.5},"
+            "{\"key\":\"cv_ftype\",\"name\":\"Flt Type\",\"type\":\"enum\",\"options\":[\"LP\",\"HP\",\"BP\"]},"
+            "{\"key\":\"cv_cutoff\",\"name\":\"Cutoff\",\"type\":\"int\",\"min\":20,\"max\":18000,\"step\":1},"
+            "{\"key\":\"cv_fres\",\"name\":\"Reso\",\"type\":\"float\",\"min\":1,\"max\":5,\"step\":0.1},"
+            "{\"key\":\"cv_nattack\",\"name\":\"N.Attack\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.001},"
+            "{\"key\":\"cv_ndecay\",\"name\":\"N.Decay\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"cv_mix\",\"name\":\"Mix\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"cv_dist\",\"name\":\"Distort\",\"type\":\"float\",\"min\":0,\"max\":50,\"step\":0.5},"
+            "{\"key\":\"cv_level\",\"name\":\"Level\",\"type\":\"float\",\"min\":0,\"max\":1,\"step\":0.01},"
+            "{\"key\":\"cv_preset\",\"name\":\"Preset\",\"type\":\"int\",\"min\":0,\"max\":40,\"step\":1}"
             "]";
         int len = (int)strlen(cp);
         if (len >= buf_len) return -1;
@@ -1844,48 +1880,17 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
         static const char *hier =
             "{\"modes\":null,\"levels\":{"
             "\"root\":{\"name\":\"Weird Dreams\","
-            "\"knobs\":[\"v1_vol\",\"v2_vol\",\"v3_vol\",\"v4_vol\",\"v5_vol\",\"v6_vol\",\"v7_vol\",\"v8_vol\"],"
-            "\"params\":[{\"level\":\"Mixer\",\"label\":\"Mixer\"},{\"level\":\"General\",\"label\":\"General\"},{\"level\":\"Patch\",\"label\":\"Patch\"},{\"level\":\"Pan\",\"label\":\"Pan\"},"
-            "{\"level\":\"Voice 1\",\"label\":\"Voice 1\"},{\"level\":\"Voice 2\",\"label\":\"Voice 2\"},"
-            "{\"level\":\"Voice 3\",\"label\":\"Voice 3\"},{\"level\":\"Voice 4\",\"label\":\"Voice 4\"},"
-            "{\"level\":\"Voice 5\",\"label\":\"Voice 5\"},{\"level\":\"Voice 6\",\"label\":\"Voice 6\"},"
-            "{\"level\":\"Voice 7\",\"label\":\"Voice 7\"},{\"level\":\"Voice 8\",\"label\":\"Voice 8\"}]},"
-            "\"Mixer\":{\"label\":\"Mixer\","
-            "\"knobs\":[\"v1_vol\",\"v2_vol\",\"v3_vol\",\"v4_vol\",\"v5_vol\",\"v6_vol\",\"v7_vol\",\"v8_vol\"],"
-            "\"params\":[\"v1_vol\",\"v2_vol\",\"v3_vol\",\"v4_vol\",\"v5_vol\",\"v6_vol\",\"v7_vol\",\"v8_vol\"]},"
-            "\"General\":{\"label\":\"General\","
-            "\"knobs\":[\"comp\",\"dj_filter\",\"eq_lo\",\"lo_freq\",\"eq_mid\",\"mid_freq\",\"eq_hi\",\"hi_freq\"],"
-            "\"params\":[\"comp\",\"dj_filter\",\"eq_lo\",\"lo_freq\",\"eq_mid\",\"mid_freq\",\"eq_hi\",\"hi_freq\",\"q_lo\",\"q_mid\",\"q_hi\",\"master\"]},"
+            "\"knobs\":[\"cv_vol\",\"cv_pan\",\"cv_freq\",\"cv_decay\",\"cv_wave\",\"cv_mix\",\"cv_cutoff\",\"cv_preset\"],"
+            "\"params\":[{\"level\":\"Patch\",\"label\":\"Patch\"},{\"level\":\"General\",\"label\":\"General\"},{\"level\":\"Voice\",\"label\":\"Voice\"}]},"
             "\"Patch\":{\"label\":\"Patch\","
             "\"knobs\":[\"kit\",\"rnd_kit\",\"rnd_voice\",\"rnd_pitch\",\"same_freq\",\"init_freq\",\"rnd_pan\",\"all_mono\"],"
             "\"params\":[\"kit\",\"rnd_kit\",\"rnd_voice\",\"rnd_pitch\",\"same_freq\",\"init_freq\",\"rnd_pan\",\"all_mono\"]},"
-            "\"Pan\":{\"label\":\"Pan\","
-            "\"knobs\":[\"v1_pan\",\"v2_pan\",\"v3_pan\",\"v4_pan\",\"v5_pan\",\"v6_pan\",\"v7_pan\",\"v8_pan\"],"
-            "\"params\":[\"v1_pan\",\"v2_pan\",\"v3_pan\",\"v4_pan\",\"v5_pan\",\"v6_pan\",\"v7_pan\",\"v8_pan\"]},"
-            "\"Voice 1\":{\"label\":\"Voice 1\","
-            "\"knobs\":[\"v1_freq\",\"v1_decay\",\"v1_wave\",\"v1_penv\",\"v1_mix\",\"v1_cutoff\",\"v1_dist\",\"v1_preset\"],"
-            "\"params\":[\"v1_freq\",\"v1_attack\",\"v1_decay\",\"v1_wave\",\"v1_penv\",\"v1_prate\",\"v1_lamt\",\"v1_lrate\",\"v1_ftype\",\"v1_cutoff\",\"v1_fres\",\"v1_nattack\",\"v1_ndecay\",\"v1_mix\",\"v1_dist\",\"v1_level\",\"v1_preset\"]},"
-            "\"Voice 2\":{\"label\":\"Voice 2\","
-            "\"knobs\":[\"v2_freq\",\"v2_decay\",\"v2_wave\",\"v2_penv\",\"v2_mix\",\"v2_cutoff\",\"v2_dist\",\"v2_preset\"],"
-            "\"params\":[\"v2_freq\",\"v2_attack\",\"v2_decay\",\"v2_wave\",\"v2_penv\",\"v2_prate\",\"v2_lamt\",\"v2_lrate\",\"v2_ftype\",\"v2_cutoff\",\"v2_fres\",\"v2_nattack\",\"v2_ndecay\",\"v2_mix\",\"v2_dist\",\"v2_level\",\"v2_preset\"]},"
-            "\"Voice 3\":{\"label\":\"Voice 3\","
-            "\"knobs\":[\"v3_freq\",\"v3_decay\",\"v3_wave\",\"v3_penv\",\"v3_mix\",\"v3_cutoff\",\"v3_dist\",\"v3_preset\"],"
-            "\"params\":[\"v3_freq\",\"v3_attack\",\"v3_decay\",\"v3_wave\",\"v3_penv\",\"v3_prate\",\"v3_lamt\",\"v3_lrate\",\"v3_ftype\",\"v3_cutoff\",\"v3_fres\",\"v3_nattack\",\"v3_ndecay\",\"v3_mix\",\"v3_dist\",\"v3_level\",\"v3_preset\"]},"
-            "\"Voice 4\":{\"label\":\"Voice 4\","
-            "\"knobs\":[\"v4_freq\",\"v4_decay\",\"v4_wave\",\"v4_penv\",\"v4_mix\",\"v4_cutoff\",\"v4_dist\",\"v4_preset\"],"
-            "\"params\":[\"v4_freq\",\"v4_attack\",\"v4_decay\",\"v4_wave\",\"v4_penv\",\"v4_prate\",\"v4_lamt\",\"v4_lrate\",\"v4_ftype\",\"v4_cutoff\",\"v4_fres\",\"v4_nattack\",\"v4_ndecay\",\"v4_mix\",\"v4_dist\",\"v4_level\",\"v4_preset\"]},"
-            "\"Voice 5\":{\"label\":\"Voice 5\","
-            "\"knobs\":[\"v5_freq\",\"v5_decay\",\"v5_wave\",\"v5_penv\",\"v5_mix\",\"v5_cutoff\",\"v5_dist\",\"v5_preset\"],"
-            "\"params\":[\"v5_freq\",\"v5_attack\",\"v5_decay\",\"v5_wave\",\"v5_penv\",\"v5_prate\",\"v5_lamt\",\"v5_lrate\",\"v5_ftype\",\"v5_cutoff\",\"v5_fres\",\"v5_nattack\",\"v5_ndecay\",\"v5_mix\",\"v5_dist\",\"v5_level\",\"v5_preset\"]},"
-            "\"Voice 6\":{\"label\":\"Voice 6\","
-            "\"knobs\":[\"v6_freq\",\"v6_decay\",\"v6_wave\",\"v6_penv\",\"v6_mix\",\"v6_cutoff\",\"v6_dist\",\"v6_preset\"],"
-            "\"params\":[\"v6_freq\",\"v6_attack\",\"v6_decay\",\"v6_wave\",\"v6_penv\",\"v6_prate\",\"v6_lamt\",\"v6_lrate\",\"v6_ftype\",\"v6_cutoff\",\"v6_fres\",\"v6_nattack\",\"v6_ndecay\",\"v6_mix\",\"v6_dist\",\"v6_level\",\"v6_preset\"]},"
-            "\"Voice 7\":{\"label\":\"Voice 7\","
-            "\"knobs\":[\"v7_freq\",\"v7_decay\",\"v7_wave\",\"v7_penv\",\"v7_mix\",\"v7_cutoff\",\"v7_dist\",\"v7_preset\"],"
-            "\"params\":[\"v7_freq\",\"v7_attack\",\"v7_decay\",\"v7_wave\",\"v7_penv\",\"v7_prate\",\"v7_lamt\",\"v7_lrate\",\"v7_ftype\",\"v7_cutoff\",\"v7_fres\",\"v7_nattack\",\"v7_ndecay\",\"v7_mix\",\"v7_dist\",\"v7_level\",\"v7_preset\"]},"
-            "\"Voice 8\":{\"label\":\"Voice 8\","
-            "\"knobs\":[\"v8_freq\",\"v8_decay\",\"v8_wave\",\"v8_penv\",\"v8_mix\",\"v8_cutoff\",\"v8_dist\",\"v8_preset\"],"
-            "\"params\":[\"v8_freq\",\"v8_attack\",\"v8_decay\",\"v8_wave\",\"v8_penv\",\"v8_prate\",\"v8_lamt\",\"v8_lrate\",\"v8_ftype\",\"v8_cutoff\",\"v8_fres\",\"v8_nattack\",\"v8_ndecay\",\"v8_mix\",\"v8_dist\",\"v8_level\",\"v8_preset\"]}"
+            "\"General\":{\"label\":\"General\","
+            "\"knobs\":[\"comp\",\"dj_filter\",\"eq_lo\",\"lo_freq\",\"eq_mid\",\"mid_freq\",\"eq_hi\",\"hi_freq\"],"
+            "\"params\":[\"comp\",\"dj_filter\",\"eq_lo\",\"lo_freq\",\"eq_mid\",\"mid_freq\",\"eq_hi\",\"hi_freq\",\"q_lo\",\"q_mid\",\"q_hi\",\"reset_eq\",\"master\"]},"
+            "\"Voice\":{\"label\":\"Voice\","
+            "\"knobs\":[\"cv_vol\",\"cv_pan\",\"cv_freq\",\"cv_decay\",\"cv_wave\",\"cv_mix\",\"cv_cutoff\",\"cv_preset\"],"
+            "\"params\":[\"cv_vol\",\"cv_pan\",\"cv_freq\",\"cv_attack\",\"cv_decay\",\"cv_wave\",\"cv_penv\",\"cv_prate\",\"cv_lamt\",\"cv_lrate\",\"cv_ftype\",\"cv_cutoff\",\"cv_fres\",\"cv_nattack\",\"cv_ndecay\",\"cv_mix\",\"cv_dist\",\"cv_level\",\"cv_preset\"]}"
             "}}";
         int len = (int)strlen(hier);
         if (len >= buf_len) return -1;
@@ -1948,6 +1953,7 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
     if (strcmp(key, "rnd_pan") == 0) return snprintf(buf, buf_len, "0");
     if (strcmp(key, "init_freq") == 0) return snprintf(buf, buf_len, "0");
     if (strcmp(key, "all_mono") == 0) return snprintf(buf, buf_len, "0");
+    if (strcmp(key, "reset_eq") == 0) return snprintf(buf, buf_len, "0");
     if (strcmp(key, "same_freq") == 0) return snprintf(buf, buf_len, "%d", inst->same_freq > 0 ? (int)inst->same_freq : 0);
     if (strcmp(key, "master") == 0) return snprintf(buf, buf_len, "%.4f", inst->master.master_level);
 
@@ -1993,6 +1999,32 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
         if (strcmp(key, k) == 0) return snprintf(buf, buf_len, "%.4f", v->level);
         snprintf(k, sizeof(k), "v%d_pan", i+1);
         if (strcmp(key, k) == 0) return snprintf(buf, buf_len, "%.4f", v->pan);
+    }
+
+    /* Virtual cv_* params — redirect to current voice */
+    if (strncmp(key, "cv_", 3) == 0) {
+        int vi = inst->current_voice;
+        wd_voice_t *v = &inst->voice[vi];
+        const char *suffix = key + 3;
+        if (strcmp(suffix, "vol") == 0) return snprintf(buf, buf_len, "%.4f", inst->voice_vol[vi]);
+        if (strcmp(suffix, "pan") == 0) return snprintf(buf, buf_len, "%.4f", v->pan);
+        if (strcmp(suffix, "freq") == 0) return snprintf(buf, buf_len, "%d", (int)v->freq);
+        if (strcmp(suffix, "decay") == 0) return snprintf(buf, buf_len, "%.4f", v->decay);
+        if (strcmp(suffix, "wave") == 0) return snprintf(buf, buf_len, "%.4f", v->wave);
+        if (strcmp(suffix, "mix") == 0) return snprintf(buf, buf_len, "%.4f", v->mix);
+        if (strcmp(suffix, "cutoff") == 0) return snprintf(buf, buf_len, "%d", (int)v->filter_cutoff);
+        if (strcmp(suffix, "preset") == 0) return snprintf(buf, buf_len, "%d", v->preset);
+        if (strcmp(suffix, "attack") == 0) return snprintf(buf, buf_len, "%.4f", v->attack);
+        if (strcmp(suffix, "penv") == 0) return snprintf(buf, buf_len, "%.4f", v->pitch_env_amt);
+        if (strcmp(suffix, "prate") == 0) return snprintf(buf, buf_len, "%.4f", v->pitch_env_rate);
+        if (strcmp(suffix, "lamt") == 0) return snprintf(buf, buf_len, "%.4f", v->pitch_lfo_amt);
+        if (strcmp(suffix, "lrate") == 0) return snprintf(buf, buf_len, "%.4f", v->pitch_lfo_rate);
+        if (strcmp(suffix, "ftype") == 0) return snprintf(buf, buf_len, "%s", FILTER_NAMES[v->filter_type]);
+        if (strcmp(suffix, "fres") == 0) return snprintf(buf, buf_len, "%.4f", v->filter_res);
+        if (strcmp(suffix, "nattack") == 0) return snprintf(buf, buf_len, "%.4f", v->noise_attack);
+        if (strcmp(suffix, "ndecay") == 0) return snprintf(buf, buf_len, "%.4f", v->noise_decay);
+        if (strcmp(suffix, "dist") == 0) return snprintf(buf, buf_len, "%.4f", v->distortion);
+        if (strcmp(suffix, "level") == 0) return snprintf(buf, buf_len, "%.4f", v->level);
     }
 
     return -1;

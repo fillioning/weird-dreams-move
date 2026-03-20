@@ -2,9 +2,9 @@
     "id": "weird-dreams",
     "name": "Weird Dreams",
     "abbrev": "WDRM",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "api_version": 2,
-    "description": "8-voice analog drum machine with 64 kits, 41 voice presets, 96 musical pitch scales, master bus FX, and per-voice pages",
+    "description": "8-voice analog drum machine with 64 kits, 41 voice presets, 96 musical pitch scales, master bus FX, and dynamic pad-selected voice editing",
     "author": "Vincent Fillion (DSP: Daniele Filaretti, MIT)",
     "license": "MIT",
     "dsp": "dsp.so",
@@ -30,81 +30,27 @@
             "levels": {
                 "root": {
                     "name": "Weird Dreams",
-                    "knobs": ["v1_vol", "v2_vol", "v3_vol", "v4_vol", "v5_vol", "v6_vol", "v7_vol", "v8_vol"],
+                    "knobs": ["cv_vol", "cv_pan", "cv_freq", "cv_decay", "cv_wave", "cv_mix", "cv_cutoff", "cv_preset"],
                     "params": [
-                        {"level": "Mixer", "label": "Mixer"},
-                        {"level": "General", "label": "General"},
                         {"level": "Patch", "label": "Patch"},
-                        {"level": "Pan", "label": "Pan"},
-                        {"level": "Voice 1", "label": "Voice 1"},
-                        {"level": "Voice 2", "label": "Voice 2"},
-                        {"level": "Voice 3", "label": "Voice 3"},
-                        {"level": "Voice 4", "label": "Voice 4"},
-                        {"level": "Voice 5", "label": "Voice 5"},
-                        {"level": "Voice 6", "label": "Voice 6"},
-                        {"level": "Voice 7", "label": "Voice 7"},
-                        {"level": "Voice 8", "label": "Voice 8"}
+                        {"level": "General", "label": "General"},
+                        {"level": "Voice", "label": "Voice"}
                     ]
-                },
-                "Mixer": {
-                    "label": "Mixer",
-                    "knobs": ["v1_vol", "v2_vol", "v3_vol", "v4_vol", "v5_vol", "v6_vol", "v7_vol", "v8_vol"],
-                    "params": ["v1_vol", "v2_vol", "v3_vol", "v4_vol", "v5_vol", "v6_vol", "v7_vol", "v8_vol"]
-                },
-                "General": {
-                    "label": "General",
-                    "knobs": ["comp", "dj_filter", "eq_lo", "lo_freq", "eq_mid", "mid_freq", "eq_hi", "hi_freq"],
-                    "params": ["comp", "dj_filter", "eq_lo", "lo_freq", "eq_mid", "mid_freq", "eq_hi", "hi_freq", "q_lo", "q_mid", "q_hi", "master"]
                 },
                 "Patch": {
                     "label": "Patch",
                     "knobs": ["kit", "rnd_kit", "rnd_voice", "rnd_pitch", "same_freq", "init_freq", "rnd_pan", "all_mono"],
                     "params": ["kit", "rnd_kit", "rnd_voice", "rnd_pitch", "same_freq", "init_freq", "rnd_pan", "all_mono"]
                 },
-                "Pan": {
-                    "label": "Pan",
-                    "knobs": ["v1_pan", "v2_pan", "v3_pan", "v4_pan", "v5_pan", "v6_pan", "v7_pan", "v8_pan"],
-                    "params": ["v1_pan", "v2_pan", "v3_pan", "v4_pan", "v5_pan", "v6_pan", "v7_pan", "v8_pan"]
+                "General": {
+                    "label": "General",
+                    "knobs": ["comp", "dj_filter", "eq_lo", "lo_freq", "eq_mid", "mid_freq", "eq_hi", "hi_freq"],
+                    "params": ["comp", "dj_filter", "eq_lo", "lo_freq", "eq_mid", "mid_freq", "eq_hi", "hi_freq", "q_lo", "q_mid", "q_hi", "reset_eq", "master"]
                 },
-                "Voice 1": {
-                    "label": "Voice 1",
-                    "knobs": ["v1_freq", "v1_decay", "v1_wave", "v1_penv", "v1_mix", "v1_cutoff", "v1_dist", "v1_preset"],
-                    "params": ["v1_freq", "v1_attack", "v1_decay", "v1_wave", "v1_penv", "v1_prate", "v1_lamt", "v1_lrate", "v1_ftype", "v1_cutoff", "v1_fres", "v1_nattack", "v1_ndecay", "v1_mix", "v1_dist", "v1_level", "v1_preset"]
-                },
-                "Voice 2": {
-                    "label": "Voice 2",
-                    "knobs": ["v2_freq", "v2_decay", "v2_wave", "v2_penv", "v2_mix", "v2_cutoff", "v2_dist", "v2_preset"],
-                    "params": ["v2_freq", "v2_attack", "v2_decay", "v2_wave", "v2_penv", "v2_prate", "v2_lamt", "v2_lrate", "v2_ftype", "v2_cutoff", "v2_fres", "v2_nattack", "v2_ndecay", "v2_mix", "v2_dist", "v2_level", "v2_preset"]
-                },
-                "Voice 3": {
-                    "label": "Voice 3",
-                    "knobs": ["v3_freq", "v3_decay", "v3_wave", "v3_penv", "v3_mix", "v3_cutoff", "v3_dist", "v3_preset"],
-                    "params": ["v3_freq", "v3_attack", "v3_decay", "v3_wave", "v3_penv", "v3_prate", "v3_lamt", "v3_lrate", "v3_ftype", "v3_cutoff", "v3_fres", "v3_nattack", "v3_ndecay", "v3_mix", "v3_dist", "v3_level", "v3_preset"]
-                },
-                "Voice 4": {
-                    "label": "Voice 4",
-                    "knobs": ["v4_freq", "v4_decay", "v4_wave", "v4_penv", "v4_mix", "v4_cutoff", "v4_dist", "v4_preset"],
-                    "params": ["v4_freq", "v4_attack", "v4_decay", "v4_wave", "v4_penv", "v4_prate", "v4_lamt", "v4_lrate", "v4_ftype", "v4_cutoff", "v4_fres", "v4_nattack", "v4_ndecay", "v4_mix", "v4_dist", "v4_level", "v4_preset"]
-                },
-                "Voice 5": {
-                    "label": "Voice 5",
-                    "knobs": ["v5_freq", "v5_decay", "v5_wave", "v5_penv", "v5_mix", "v5_cutoff", "v5_dist", "v5_preset"],
-                    "params": ["v5_freq", "v5_attack", "v5_decay", "v5_wave", "v5_penv", "v5_prate", "v5_lamt", "v5_lrate", "v5_ftype", "v5_cutoff", "v5_fres", "v5_nattack", "v5_ndecay", "v5_mix", "v5_dist", "v5_level", "v5_preset"]
-                },
-                "Voice 6": {
-                    "label": "Voice 6",
-                    "knobs": ["v6_freq", "v6_decay", "v6_wave", "v6_penv", "v6_mix", "v6_cutoff", "v6_dist", "v6_preset"],
-                    "params": ["v6_freq", "v6_attack", "v6_decay", "v6_wave", "v6_penv", "v6_prate", "v6_lamt", "v6_lrate", "v6_ftype", "v6_cutoff", "v6_fres", "v6_nattack", "v6_ndecay", "v6_mix", "v6_dist", "v6_level", "v6_preset"]
-                },
-                "Voice 7": {
-                    "label": "Voice 7",
-                    "knobs": ["v7_freq", "v7_decay", "v7_wave", "v7_penv", "v7_mix", "v7_cutoff", "v7_dist", "v7_preset"],
-                    "params": ["v7_freq", "v7_attack", "v7_decay", "v7_wave", "v7_penv", "v7_prate", "v7_lamt", "v7_lrate", "v7_ftype", "v7_cutoff", "v7_fres", "v7_nattack", "v7_ndecay", "v7_mix", "v7_dist", "v7_level", "v7_preset"]
-                },
-                "Voice 8": {
-                    "label": "Voice 8",
-                    "knobs": ["v8_freq", "v8_decay", "v8_wave", "v8_penv", "v8_mix", "v8_cutoff", "v8_dist", "v8_preset"],
-                    "params": ["v8_freq", "v8_attack", "v8_decay", "v8_wave", "v8_penv", "v8_prate", "v8_lamt", "v8_lrate", "v8_ftype", "v8_cutoff", "v8_fres", "v8_nattack", "v8_ndecay", "v8_mix", "v8_dist", "v8_level", "v8_preset"]
+                "Voice": {
+                    "label": "Voice",
+                    "knobs": ["cv_vol", "cv_pan", "cv_freq", "cv_decay", "cv_wave", "cv_mix", "cv_cutoff", "cv_preset"],
+                    "params": ["cv_vol", "cv_pan", "cv_freq", "cv_attack", "cv_decay", "cv_wave", "cv_penv", "cv_prate", "cv_lamt", "cv_lrate", "cv_ftype", "cv_cutoff", "cv_fres", "cv_nattack", "cv_ndecay", "cv_mix", "cv_dist", "cv_level", "cv_preset"]
                 }
             }
         }
