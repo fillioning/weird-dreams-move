@@ -1,6 +1,6 @@
 # Weird Dreams — 8-Voice Drum Machine for Ableton Move
 
-Port of [WeirdDrums](https://github.com/dfilaretti/WeirdDrums) (Daniele Filaretti, MIT) to the [Move Everything](https://github.com/charlesvestal/move-everything) framework, expanded into a full 8-voice drum machine with master bus FX, 64 kit presets and randomization (kit, pitch, pan).
+Port of [WeirdDrums](https://github.com/dfilaretti/WeirdDrums) (Daniele Filaretti, MIT) to the [Schwung](https://github.com/charlesvestal/move-everything) framework, expanded into a full 8-voice drum machine with master bus FX, 64 kit presets and randomization (kit, pitch, pan).
 
 ## Features
 
