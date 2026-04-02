@@ -38,7 +38,7 @@ Pressing a pad triggers the voice AND switches to that voice's parameters on kno
 
 - Original DSP: [Daniele Filaretti](https://github.com/dfilaretti/WeirdDrums) (MIT)
 - Move port and expansion: Vincent Fillion
-- Framework: [Move Everything](https://github.com/charlesvestal/move-everything)
+- Framework: [Schwung](https://github.com/charlesvestal/move-everything)
 
 ## License
 
