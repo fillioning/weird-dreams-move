@@ -2,7 +2,7 @@
     "id": "weird-dreams",
     "name": "Weird Dreams",
     "abbrev": "WDRM",
-    "version": "0.2.1",
+    "version": "0.2.5",
     "api_version": 2,
     "description": "8-voice analog drum machine with 64 kits, 41 voice presets, 96 musical pitch scales, master bus FX, and dynamic pad-selected voice editing",
     "author": "Vincent Fillion (DSP: Daniele Filaretti, MIT)",

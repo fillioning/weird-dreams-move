@@ -1141,6 +1141,11 @@ typedef struct {
     uint32_t    rng_state;               /* RNG for randomize */
     wd_reverb_t reverb;
     wd_delay_t  delay;
+    /* Kit persistence */
+    int         custom_presets[NUM_KITS][NUM_VOICES]; /* user-saved voice presets per kit */
+    float       custom_vols[NUM_KITS][NUM_VOICES];    /* user-saved volumes per kit */
+    float       custom_pans[NUM_KITS][NUM_VOICES];    /* user-saved pans per kit */
+    int         save_kit_state;                       /* 0=Play, 1=Save (self-resetting) */
 } wd_instance_t;
 
 /* Simple RNG for randomize */
@@ -1328,8 +1333,9 @@ static void apply_kit(wd_instance_t *inst, int kit) {
     if (kit < 0 || kit >= NUM_KITS) return;
     inst->current_kit = kit;
     for (int i = 0; i < NUM_VOICES; i++) {
-        voice_apply_preset(&inst->voice[i], KIT_PRESETS[kit][i]);
-        inst->voice_vol[i] = inst->voice[i].level;
+        voice_apply_preset(&inst->voice[i], inst->custom_presets[kit][i]);
+        inst->voice_vol[i] = inst->custom_vols[kit][i];
+        inst->voice[i].pan = inst->custom_pans[kit][i];
     }
 }
 
@@ -1424,6 +1430,46 @@ static float dist_to_knob(float d) {
 }
 
 /* ============================================================================
+ * Kit persistence — binary save/load to /data partition
+ * ============================================================================ */
+
+#define WD_KITS_FILE   "/data/UserData/schwung/weird_dreams_kits.dat"
+#define WD_KITS_MAGIC  0x57444B54u  /* 'WDKT' */
+#define WD_KITS_VER    1u
+
+typedef struct {
+    uint32_t magic, version, count, reserved;
+    int   presets[NUM_KITS][NUM_VOICES];
+    float vols[NUM_KITS][NUM_VOICES];
+    float pans[NUM_KITS][NUM_VOICES];
+} wd_kits_file_t;
+
+static void wd_save_kits(wd_instance_t *inst) {
+    FILE *f = fopen(WD_KITS_FILE, "wb");
+    if (!f) return;
+    wd_kits_file_t file;
+    file.magic = WD_KITS_MAGIC; file.version = WD_KITS_VER;
+    file.count = NUM_KITS; file.reserved = 0;
+    memcpy(file.presets, inst->custom_presets, sizeof(file.presets));
+    memcpy(file.vols,    inst->custom_vols,    sizeof(file.vols));
+    memcpy(file.pans,    inst->custom_pans,    sizeof(file.pans));
+    fwrite(&file, sizeof(file), 1, f);
+    fclose(f);
+}
+
+static void wd_load_kits(wd_instance_t *inst) {
+    FILE *f = fopen(WD_KITS_FILE, "rb");
+    if (!f) return;
+    wd_kits_file_t file;
+    int ok = (fread(&file, sizeof(file), 1, f) == 1);
+    fclose(f);
+    if (!ok || file.magic != WD_KITS_MAGIC || file.version != WD_KITS_VER || file.count != NUM_KITS) return;
+    memcpy(inst->custom_presets, file.presets, sizeof(file.presets));
+    memcpy(inst->custom_vols,    file.vols,    sizeof(file.vols));
+    memcpy(inst->custom_pans,    file.pans,    sizeof(file.pans));
+}
+
+/* ============================================================================
  * Plugin API
  * ============================================================================ */
 
@@ -1445,6 +1491,19 @@ static void *create_instance(const char *module_dir, const char *json_defaults) 
     inst->midi_voice_cursor = 0;
     inst->current_kit = 0;
     inst->same_freq = 0.0f;
+    /* Initialize custom kits from built-in defaults */
+    for (int k = 0; k < NUM_KITS; k++) {
+        for (int v = 0; v < NUM_VOICES; v++) {
+            inst->custom_presets[k][v] = KIT_PRESETS[k][v];
+            /* Default volumes/pans from voice preset defaults */
+            wd_voice_t tmp; voice_init(&tmp, v);
+            voice_apply_preset(&tmp, KIT_PRESETS[k][v]);
+            inst->custom_vols[k][v] = tmp.level;
+            inst->custom_pans[k][v] = tmp.pan;
+        }
+    }
+    wd_load_kits(inst);
+    inst->save_kit_state = 0;
     inst->current_pitch_scale = -1;
     inst->rng_state = 987654321u;
 
@@ -1691,6 +1750,19 @@ static void set_param(void *instance, const char *key, const char *val) {
     }
     if (strcmp(key, "all_mono") == 0) {
         if (f != 0) { for (int i=0;i<NUM_VOICES;i++) inst->voice[i].pan=0.0f; }
+        return;
+    }
+    if (strcmp(key, "save_kit") == 0) {
+        if (strcmp(val, "Save") == 0) {
+            int k = inst->current_kit;
+            for (int i = 0; i < NUM_VOICES; i++) {
+                inst->custom_presets[k][i] = inst->voice[i].preset;
+                inst->custom_vols[k][i]    = inst->voice_vol[i];
+                inst->custom_pans[k][i]    = inst->voice[i].pan;
+            }
+            wd_save_kits(inst);
+            inst->save_kit_state = 0;
+        }
         return;
     }
     if (strcmp(key, "reset_eq") == 0) {
@@ -2077,6 +2149,7 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
             "{\"key\":\"init_freq\",\"name\":\"Init Freq\",\"type\":\"int\",\"min\":0,\"max\":1,\"step\":1},"
             "{\"key\":\"rnd_pan\",\"name\":\"Rnd Pan\",\"type\":\"int\",\"min\":0,\"max\":1,\"step\":1},"
             "{\"key\":\"all_mono\",\"name\":\"All Mono\",\"type\":\"int\",\"min\":0,\"max\":1,\"step\":1},"
+            "{\"key\":\"save_kit\",\"name\":\"Save Kit\",\"type\":\"enum\",\"options\":[\"Play\",\"Save\"]},"
             "{\"key\":\"v1_pan\",\"name\":\"V1 Pan\",\"type\":\"float\",\"min\":-1,\"max\":1,\"step\":0.02},"
             "{\"key\":\"v2_pan\",\"name\":\"V2 Pan\",\"type\":\"float\",\"min\":-1,\"max\":1,\"step\":0.02},"
             "{\"key\":\"v3_pan\",\"name\":\"V3 Pan\",\"type\":\"float\",\"min\":-1,\"max\":1,\"step\":0.02},"
@@ -2284,7 +2357,7 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
             "\"params\":[{\"level\":\"Patch\",\"label\":\"Patch\"},{\"level\":\"General\",\"label\":\"General\"},{\"level\":\"Voice\",\"label\":\"Voice\"},{\"level\":\"FX\",\"label\":\"FX\"}]},"
             "\"Patch\":{\"label\":\"Patch\","
             "\"knobs\":[\"kit\",\"rnd_kit\",\"rnd_voice\",\"rnd_pitch\",\"same_freq\",\"init_freq\",\"rnd_pan\",\"all_mono\"],"
-            "\"params\":[\"kit\",\"rnd_kit\",\"rnd_voice\",\"rnd_pitch\",\"same_freq\",\"init_freq\",\"rnd_pan\",\"all_mono\"]},"
+            "\"params\":[\"kit\",\"rnd_kit\",\"rnd_voice\",\"rnd_pitch\",\"same_freq\",\"init_freq\",\"rnd_pan\",\"all_mono\",\"save_kit\"]},"
             "\"General\":{\"label\":\"General\","
             "\"knobs\":[\"comp\",\"dj_filter\",\"eq_lo\",\"lo_freq\",\"eq_mid\",\"mid_freq\",\"eq_hi\",\"hi_freq\"],"
             "\"params\":[\"comp\",\"dj_filter\",\"eq_lo\",\"lo_freq\",\"eq_mid\",\"mid_freq\",\"eq_hi\",\"hi_freq\",\"q_lo\",\"q_mid\",\"q_hi\",\"reset_eq\",\"master\"]},"
@@ -2361,6 +2434,7 @@ static int get_param(void *instance, const char *key, char *buf, int buf_len) {
     if (strcmp(key, "rnd_pan") == 0) return snprintf(buf, buf_len, "0");
     if (strcmp(key, "init_freq") == 0) return snprintf(buf, buf_len, "0");
     if (strcmp(key, "all_mono") == 0) return snprintf(buf, buf_len, "0");
+    if (strcmp(key, "save_kit") == 0) return snprintf(buf, buf_len, "%s", inst->save_kit_state ? "Save" : "Play");
     if (strcmp(key, "reset_eq") == 0) return snprintf(buf, buf_len, "0");
     if (strcmp(key, "same_freq") == 0) return snprintf(buf, buf_len, "%d", inst->same_freq > 0 ? (int)inst->same_freq : 0);
     if (strcmp(key, "master") == 0) return snprintf(buf, buf_len, "%.4f", inst->master.master_level);
