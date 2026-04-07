@@ -1,6 +1,6 @@
 # Weird Dreams — 8-Voice Drum Machine for Ableton Move
 
-Port of [WeirdDrums](https://github.com/dfilaretti/WeirdDrums) (Daniele Filaretti, MIT) to the [Schwung](https://github.com/charlesvestal/move-everything) framework, expanded into a full 8-voice drum machine with master bus FX, 64 kit presets and randomization (kit, pitch, pan).
+Port of [WeirdDrums](https://github.com/dfilaretti/WeirdDrums) (Daniele Filaretti, MIT) to the [Schwung](https://github.com/charlesvestal/schwung) framework, expanded into a full 8-voice drum machine with master bus FX, 64 kit presets and randomization (kit, pitch, pan).
 
 ## Features
 
@@ -38,7 +38,7 @@ Pressing a pad triggers the voice AND switches to that voice's parameters on kno
 
 - Original DSP: [Daniele Filaretti](https://github.com/dfilaretti/WeirdDrums) (MIT)
 - Move port and expansion: Vincent Fillion
-- Framework: [Schwung](https://github.com/charlesvestal/move-everything)
+- Framework: [Schwung](https://github.com/charlesvestal/schwung)
 
 ## License
 
